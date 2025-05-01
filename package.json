@@ -1,0 +1,26 @@
+{
+  "name": "xray-diagnosis-ai",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lequocduyquang/xray-diagnosis-ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lequocduyquang/xray-diagnosis-ai/issues"
+  },
+  "homepage": "https://github.com/lequocduyquang/xray-diagnosis-ai#readme",
+  "description": "",
+  "dependencies": {
+    "dicom-parser": "^1.8.21",
+    "express": "^5.1.0",
+    "multer": "^1.4.5-lts.2",
+    "sharp": "^0.34.1"
+  }
+}
