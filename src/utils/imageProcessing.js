@@ -1,45 +1,48 @@
-const fs = require("fs");
-const dicomParser = require("dicom-parser");
-const sharp = require("sharp");
+// src/utils/imageProcessing.js
+import fs from "fs";
+import dicomParser from "dicom-parser";
+import sharp from "sharp";
 
 /**
- * Chuyển đổi file DICOM sang PNG
- * @param {string} dicomPath - Đường dẫn file DICOM đầu vào
- * @param {string} outputPath - Đường dẫn file PNG đầu ra
+ * Chuyển đổi ảnh DICOM sang PNG
+ * @param {string} dicomFilePath Đường dẫn đến file DICOM
+ * @returns {Promise<string>} Đường dẫn đến file PNG đã chuyển đổi
  */
-async function dicomToPng(dicomPath, outputPath) {
+export async function dicomToPng(dicomFilePath) {
   try {
     // Đọc file DICOM
-    const dicomBuffer = fs.readFileSync(dicomPath);
+    const dicomBuffer = fs.readFileSync(dicomFilePath);
     const dataSet = dicomParser.parseDicom(dicomBuffer);
 
     // Lấy thông tin ảnh từ DICOM
     const pixelDataElement = dataSet.elements.x7fe00010;
     const pixelData = dicomBuffer.slice(pixelDataElement.dataOffset);
 
-    // Giải mã ảnh và chuyển sang PNG
-    const width = dataSet.uint16("x00280011"); // Width (Cột)
-    const height = dataSet.uint16("x00280010"); // Height (Dài)
-    const bitsAllocated = dataSet.uint16("x00280100"); // Bit Depth
+    // Lấy kích thước ảnh
+    const width = dataSet.uint16("x00280011"); // Chiều rộng (Width)
+    const height = dataSet.uint16("x00280010"); // Chiều cao (Height)
+    const bitsAllocated = dataSet.uint16("x00280100"); // Bit Depth (Số bit)
 
+    // Kiểm tra độ sâu bit của ảnh
     if (bitsAllocated !== 16) {
       throw new Error("Chỉ hỗ trợ ảnh DICOM 16-bit!");
     }
 
-    // Dữ liệu pixel có thể cần được chuyển đổi sang định dạng phù hợp
+    // Chuyển đổi dữ liệu pixel 16-bit sang 8-bit và chuẩn hóa lại
     const pixelArray = new Uint16Array(pixelData.buffer);
-
-    // Xử lý pixel theo yêu cầu của ảnh
     const normalizedPixels = normalizePixels(pixelArray, width, height);
 
     // Lưu ảnh dưới định dạng PNG
+    const outputPath = dicomFilePath.replace(".dcm", ".png"); // Tạo đường dẫn ảnh PNG từ file DICOM
     await sharp(Buffer.from(normalizedPixels))
       .toFormat("png")
       .toFile(outputPath);
 
     console.log(`Ảnh đã được chuyển thành công sang PNG: ${outputPath}`);
+    return outputPath;
   } catch (err) {
     console.error("Lỗi khi chuyển đổi DICOM sang PNG:", err);
+    throw err; // Ném lỗi để có thể xử lý tiếp ở các bước sau
   }
 }
 
@@ -67,5 +70,3 @@ function normalizePixels(pixelArray, width, height) {
 
   return normalized;
 }
-
-module.exports = { dicomToPng };
