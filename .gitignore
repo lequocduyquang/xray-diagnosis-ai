@@ -1,3 +1,23 @@
 .env
 node_modules
 uploads
+
+# ML model
+ml
+
+# Python virtual environment
+venv/
+
+# Data folder
+data/
+
+# Byte-compiled Python files
+__pycache__/
+*.py[cod]
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp
