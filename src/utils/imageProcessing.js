@@ -16,7 +16,14 @@ export async function dicomToPng(dicomFilePath) {
 
     // Lấy thông tin ảnh từ DICOM
     const pixelDataElement = dataSet.elements.x7fe00010;
+    if (!pixelDataElement) {
+      throw new Error("Không tìm thấy dữ liệu pixel trong file DICOM!");
+    }
+    console.log(`Kích thước dữ liệu pixel: ${pixelDataElement.length} bytes`);
     const pixelData = dicomBuffer.slice(pixelDataElement.dataOffset);
+    console.log(
+      `Kích thước dữ liệu pixel sau khi cắt: ${pixelData.length} bytes`
+    );
 
     // Lấy kích thước ảnh
     const width = dataSet.uint16("x00280011"); // Chiều rộng (Width)
@@ -31,18 +38,32 @@ export async function dicomToPng(dicomFilePath) {
     // Chuyển đổi dữ liệu pixel 16-bit sang 8-bit và chuẩn hóa lại
     const pixelArray = new Uint16Array(pixelData.buffer);
     const normalizedPixels = normalizePixels(pixelArray, width, height);
+    console.log(
+      `Kích thước dữ liệu pixel sau khi chuẩn hóa: ${normalizedPixels.length} bytes`
+    );
 
-    // Lưu ảnh dưới định dạng PNG
-    const outputPath = dicomFilePath.replace(".dcm", ".png"); // Tạo đường dẫn ảnh PNG từ file DICOM
-    await sharp(Buffer.from(normalizedPixels))
-      .toFormat("png")
+    // Chuyển đổi dữ liệu đã chuẩn hóa thành Buffer
+    const buffer = Buffer.from(normalizedPixels);
+
+    // Create output path
+    const outputPath = dicomFilePath.replace(".dcm", ".png");
+
+    // Convert to PNG using Sharp
+    await sharp(Buffer.from(normalizedPixels), {
+      raw: {
+        width: width,
+        height: height,
+        channels: 1,
+      },
+    })
+      .png()
       .toFile(outputPath);
 
     console.log(`Ảnh đã được chuyển thành công sang PNG: ${outputPath}`);
     return outputPath;
   } catch (err) {
     console.error("Lỗi khi chuyển đổi DICOM sang PNG:", err);
-    throw err; // Ném lỗi để có thể xử lý tiếp ở các bước sau
+    throw err;
   }
 }
 
