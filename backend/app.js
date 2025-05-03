@@ -1,8 +1,7 @@
 import express from "express";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
-import { convertDicomToPng } from "./utils/dicom-to-png.js";
+import { convertDicomToPng } from "./utils/dcom-to-png.js";
 import { predictXRay } from "./onnx/predict.js";
 import { extractEmbedding } from "./embedding/extract.js";
 import { searchSimilarImages } from "./vector-db/search.js";
