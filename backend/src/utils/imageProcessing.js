@@ -29,14 +29,21 @@ export async function dicomToPng(dicomFilePath) {
     const width = dataSet.uint16("x00280011"); // Chiều rộng (Width)
     const height = dataSet.uint16("x00280010"); // Chiều cao (Height)
     const bitsAllocated = dataSet.uint16("x00280100"); // Bit Depth (Số bit)
+    console.log(`Độ sâu bit: ${bitsAllocated} bits`);
 
     // Kiểm tra độ sâu bit của ảnh
-    if (bitsAllocated !== 16) {
-      throw new Error("Chỉ hỗ trợ ảnh DICOM 16-bit!");
+    if (bitsAllocated !== 16 && bitsAllocated !== 8) {
+      throw new Error("Chỉ hỗ trợ ảnh DICOM 8-bit hoặc 16-bit!");
     }
 
-    // Chuyển đổi dữ liệu pixel 16-bit sang 8-bit và chuẩn hóa lại
-    const pixelArray = new Uint16Array(pixelData.buffer);
+    // Chuyển đổi dữ liệu pixel dựa trên độ sâu bit
+    let pixelArray;
+    if (bitsAllocated === 16) {
+      pixelArray = new Uint16Array(pixelData.buffer); // 16-bit
+    } else if (bitsAllocated === 8) {
+      pixelArray = new Uint8Array(pixelData.buffer); // 8-bit
+    }
+
     const normalizedPixels = normalizePixels(pixelArray, width, height);
     console.log(
       `Kích thước dữ liệu pixel sau khi chuẩn hóa: ${normalizedPixels.length} bytes`
