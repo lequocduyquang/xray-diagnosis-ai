@@ -71,20 +71,23 @@ export async function analyzeXrayImage(filePath) {
   }
 }
 
-async function preprocessImage(pngFilePath) {
+async function preprocessImage(imagePath) {
   try {
-    const imageBuffer = await sharp(pngFilePath)
-      .resize(224, 224)
-      .removeAlpha()
-      .ensureAlpha() // đảm bảo luôn có 3 channels RGB
-      .raw()
+    // Simplified image preprocessing pipeline
+    const imageBuffer = await sharp(imagePath)
+      .resize(224, 224) // Resize to model input size
+      .removeAlpha() // Remove alpha channel if present
+      .toColorspace("srgb") // Use sRGB color space
+      .raw() // Get raw pixel data
       .toBuffer();
 
+    // Normalize pixel values to [0, 1]
     const floatImage = new Float32Array(imageBuffer.length);
     for (let i = 0; i < imageBuffer.length; i++) {
       floatImage[i] = imageBuffer[i] / 255.0;
     }
 
+    // Create tensor with shape [1, 3, 224, 224] for RGB image
     const tensor = new ort.Tensor("float32", floatImage, [1, 3, 224, 224]);
     return tensor;
   } catch (error) {
