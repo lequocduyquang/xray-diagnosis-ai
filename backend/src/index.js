@@ -12,6 +12,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    message: "Server is healthy",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use("/api", imageRoutes);
 
 const PORT = process.env.PORT || 5000;
