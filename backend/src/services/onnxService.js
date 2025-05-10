@@ -3,52 +3,56 @@ import { Jimp } from "jimp";
 import * as ort from "onnxruntime-node";
 import path from "path";
 import { fileURLToPath } from "url";
-import { dicomToPng } from "../utils/imageProcessing.js";
 import { softmax, getPredictedClass } from "../utils/calculation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Kiểm tra xem có phải DICOM file không
- * @param {string} filePath
- * @returns {Promise<boolean>}
- */
-async function isDicomFile(filePath) {
-  const buffer = await fs.readFile(filePath);
-  return buffer.slice(128, 132).toString() === "DICM";
-}
-
-/**
  * Sử dụng ONNX model để phân tích ảnh X-quang
- * @param {string} filePath Đường dẫn đến file ảnh (DICOM hoặc PNG/JPEG)
+ * @param {string} filePathOrUrl Đường dẫn đến file ảnh (PNG/JPEG)
  * @returns {Promise<any>}
  */
-export async function analyzeXrayImage(filePath) {
+export async function analyzeXrayImage(filePathOrUrl) {
   try {
-    let processedPath;
+    let fileBuffer;
 
-    if (await isDicomFile(filePath)) {
-      processedPath = await dicomToPng(filePath);
-      console.log(`Đã chuyển DICOM sang PNG: ${processedPath}`);
+    if (filePathOrUrl.startsWith("http")) {
+      // Tải file từ URL
+      const response = await fetch(filePathOrUrl);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch file from URL: ${response.statusText}`
+        );
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      fileBuffer = Buffer.from(arrayBuffer);
     } else {
-      processedPath = filePath;
-      console.log(`Ảnh thường (PNG/JPEG) nhận vào: ${processedPath}`);
+      // Đọc file từ local
+      fileBuffer = await fs.readFile(filePathOrUrl);
     }
 
+    console.log(`Đã tải file: ${filePathOrUrl}`);
+
+    // Tiền xử lý ảnh
+    const inputTensor = await preprocessImage(fileBuffer);
+
+    // Đường dẫn đến model ONNX
     const modelPath = path.join(
       __dirname,
       "../../",
       "../ml/models/resnet50-pneumonia.onnx"
     );
 
+    // Tạo session ONNX
     const session = await ort.InferenceSession.create(modelPath);
-    const inputTensor = await preprocessImage(processedPath);
 
+    // Chạy inference
     const feeds = { input: inputTensor };
     const results = await session.run(feeds);
 
-    const logits = results.output.cpuData;
+    // Xử lý kết quả
+    const logits = results.output.data;
     const probabilities = softmax(logits);
     const predictedClass = getPredictedClass(probabilities);
 
@@ -117,46 +121,5 @@ async function preprocessImage(imagePath) {
   } catch (err) {
     console.error("❌ Error in preprocessImage:", err);
     throw err;
-  }
-}
-
-/**
- * Trích xuất embedding vector từ ảnh bằng model embedding
- * @param {string} filePath Đường dẫn ảnh (có thể là DICOM)
- * @returns {Promise<number[]>} Vector embedding
- */
-export async function extractEmbedding(filePath) {
-  try {
-    let processedPath;
-
-    if (await isDicomFile(filePath)) {
-      processedPath = await dicomToPng(filePath);
-      console.log(
-        `🧠 Đã convert DICOM sang PNG cho embedding: ${processedPath}`
-      );
-    } else {
-      processedPath = filePath;
-    }
-
-    // Load model embedding (resnet50 cắt layer gần cuối)
-    const modelPath = path.join(
-      __dirname,
-      "../../",
-      "ml/models/resnet50-embedding.onnx"
-    );
-    const session = await ort.InferenceSession.create(modelPath);
-
-    const inputTensor = await preprocessImage(processedPath);
-    const feeds = { input: inputTensor };
-
-    const results = await session.run(feeds);
-
-    const outputKey = Object.keys(results)[0];
-    const embeddingTensor = results[outputKey];
-
-    return Array.from(embeddingTensor.data); // Trả về mảng số thực
-  } catch (error) {
-    console.error("❌ Lỗi khi trích xuất embedding:", error);
-    throw error;
   }
 }

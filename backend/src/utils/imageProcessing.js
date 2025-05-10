@@ -1,7 +1,7 @@
 // src/utils/imageProcessing.js
 import fs from "fs";
+import { PNG } from "pngjs";
 import dicomParser from "dicom-parser";
-import sharp from "sharp";
 
 /**
  * Chuyển đổi ảnh DICOM sang PNG
@@ -20,54 +20,64 @@ export async function dicomToPng(dicomFilePath) {
       throw new Error("Không tìm thấy dữ liệu pixel trong file DICOM!");
     }
     console.log(`Kích thước dữ liệu pixel: ${pixelDataElement.length} bytes`);
-    const pixelData = dicomBuffer.slice(pixelDataElement.dataOffset);
-    console.log(
-      `Kích thước dữ liệu pixel sau khi cắt: ${pixelData.length} bytes`
-    );
 
     // Lấy kích thước ảnh
     const width = dataSet.uint16("x00280011"); // Chiều rộng (Width)
     const height = dataSet.uint16("x00280010"); // Chiều cao (Height)
     const bitsAllocated = dataSet.uint16("x00280100"); // Bit Depth (Số bit)
-    console.log(`Độ sâu bit: ${bitsAllocated} bits`);
+    console.log(
+      `Kích thước ảnh: ${width}x${height}, Độ sâu bit: ${bitsAllocated} bits`
+    );
 
     // Kiểm tra độ sâu bit của ảnh
     if (bitsAllocated !== 16 && bitsAllocated !== 8) {
       throw new Error("Chỉ hỗ trợ ảnh DICOM 8-bit hoặc 16-bit!");
     }
 
-    // Chuyển đổi dữ liệu pixel dựa trên độ sâu bit
-    let pixelArray;
-    if (bitsAllocated === 16) {
-      pixelArray = new Uint16Array(pixelData.buffer); // 16-bit
-    } else if (bitsAllocated === 8) {
-      pixelArray = new Uint8Array(pixelData.buffer); // 8-bit
-    }
-
-    const normalizedPixels = normalizePixels(pixelArray, width, height);
-    console.log(
-      `Kích thước dữ liệu pixel sau khi chuẩn hóa: ${normalizedPixels.length} bytes`
+    // Tạo mảng pixel từ dữ liệu DICOM
+    const pixelData = new Uint8Array(
+      dicomBuffer.buffer,
+      pixelDataElement.dataOffset,
+      pixelDataElement.length
     );
 
-    // Chuyển đổi dữ liệu đã chuẩn hóa thành Buffer
-    const buffer = Buffer.from(normalizedPixels);
+    // Chuẩn hóa pixel về 8-bit nếu cần
+    const normalizedPixels = new Uint8Array(width * height);
+    if (bitsAllocated === 16) {
+      const pixelArray = new Uint16Array(pixelData.buffer);
+      const maxPixelValue = Math.max(...pixelArray);
+      for (let i = 0; i < pixelArray.length; i++) {
+        normalizedPixels[i] = Math.round((pixelArray[i] / maxPixelValue) * 255);
+      }
+    } else {
+      normalizedPixels.set(pixelData); // Nếu là 8-bit, giữ nguyên
+    }
 
-    // Create output path
-    const outputPath = dicomFilePath.replace(".dcm", ".png");
+    // Tạo ảnh PNG
+    const png = new PNG({ width, height });
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) << 2; // RGBA index
+        const pixelValue = normalizedPixels[y * width + x];
+        png.data[idx] = pixelValue; // R
+        png.data[idx + 1] = pixelValue; // G
+        png.data[idx + 2] = pixelValue; // B
+        png.data[idx + 3] = 255; // Alpha
+      }
+    }
 
-    // Convert to PNG using Sharp
-    await sharp(Buffer.from(normalizedPixels), {
-      raw: {
-        width: width,
-        height: height,
-        channels: 1,
-      },
-    })
-      .png()
-      .toFile(outputPath);
+    // Lưu file PNG tạm thời
+    const pngFilePath = dicomFilePath.replace(".dcm", ".png");
+    await new Promise((resolve, reject) => {
+      png
+        .pack()
+        .pipe(fs.createWriteStream(pngFilePath))
+        .on("finish", resolve)
+        .on("error", reject);
+    });
 
-    console.log(`Ảnh đã được chuyển thành công sang PNG: ${outputPath}`);
-    return outputPath;
+    console.log(`Ảnh đã được chuyển thành công sang PNG: ${pngFilePath}`);
+    return pngFilePath;
   } catch (err) {
     console.error("Lỗi khi chuyển đổi DICOM sang PNG:", err);
     throw err;
