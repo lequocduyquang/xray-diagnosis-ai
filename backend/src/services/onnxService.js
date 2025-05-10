@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import sharp from "sharp";
+import { Jimp } from "jimp";
 import * as ort from "onnxruntime-node";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -73,25 +73,90 @@ export async function analyzeXrayImage(filePath) {
 
 async function preprocessImage(imagePath) {
   try {
-    // Simplified image preprocessing pipeline
-    const imageBuffer = await sharp(imagePath)
-      .resize(224, 224) // Resize to model input size
-      .removeAlpha() // Remove alpha channel if present
-      .toColorspace("srgb") // Use sRGB color space
-      .raw() // Get raw pixel data
-      .toBuffer();
+    const image = await Jimp.read(imagePath);
 
-    // Normalize pixel values to [0, 1]
-    const floatImage = new Float32Array(imageBuffer.length);
-    for (let i = 0; i < imageBuffer.length; i++) {
-      floatImage[i] = imageBuffer[i] / 255.0;
+    const targetWidth = 224;
+    const targetHeight = 224;
+    image.resize({
+      w: targetWidth,
+      h: targetHeight,
+    });
+
+    const pixels = image.bitmap.data;
+
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+
+    const tensorData = new Float32Array(3 * targetWidth * targetHeight);
+
+    for (let y = 0; y < targetHeight; y++) {
+      for (let x = 0; x < targetWidth; x++) {
+        const pixelIdx = (y * targetWidth + x) * 4; // Jimp includes alpha channel
+
+        const r = pixels[pixelIdx] / 255.0;
+        const g = pixels[pixelIdx + 1] / 255.0;
+        const b = pixels[pixelIdx + 2] / 255.0;
+
+        const idx = y * targetWidth + x;
+
+        tensorData[idx] = (r - mean[0]) / std[0]; // R
+        tensorData[targetWidth * targetHeight + idx] = (g - mean[1]) / std[1]; // G
+        tensorData[2 * targetWidth * targetHeight + idx] =
+          (b - mean[2]) / std[2]; // B
+      }
     }
 
-    // Create tensor with shape [1, 3, 224, 224] for RGB image
-    const tensor = new ort.Tensor("float32", floatImage, [1, 3, 224, 224]);
+    const tensor = new ort.Tensor("float32", tensorData, [
+      1,
+      3,
+      targetHeight,
+      targetWidth,
+    ]);
+
     return tensor;
+  } catch (err) {
+    console.error("❌ Error in preprocessImage:", err);
+    throw err;
+  }
+}
+
+/**
+ * Trích xuất embedding vector từ ảnh bằng model embedding
+ * @param {string} filePath Đường dẫn ảnh (có thể là DICOM)
+ * @returns {Promise<number[]>} Vector embedding
+ */
+export async function extractEmbedding(filePath) {
+  try {
+    let processedPath;
+
+    if (await isDicomFile(filePath)) {
+      processedPath = await dicomToPng(filePath);
+      console.log(
+        `🧠 Đã convert DICOM sang PNG cho embedding: ${processedPath}`
+      );
+    } else {
+      processedPath = filePath;
+    }
+
+    // Load model embedding (resnet50 cắt layer gần cuối)
+    const modelPath = path.join(
+      __dirname,
+      "../../",
+      "ml/models/resnet50-embedding.onnx"
+    );
+    const session = await ort.InferenceSession.create(modelPath);
+
+    const inputTensor = await preprocessImage(processedPath);
+    const feeds = { input: inputTensor };
+
+    const results = await session.run(feeds);
+
+    const outputKey = Object.keys(results)[0];
+    const embeddingTensor = results[outputKey];
+
+    return Array.from(embeddingTensor.data); // Trả về mảng số thực
   } catch (error) {
-    console.error("Error during image preprocessing:", error);
+    console.error("❌ Lỗi khi trích xuất embedding:", error);
     throw error;
   }
 }
