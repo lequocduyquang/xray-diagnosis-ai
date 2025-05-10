@@ -7,21 +7,18 @@ import { analyzeXrayImage } from "../services/onnxService.js";
  */
 export async function analyzeXray(req, res) {
   try {
-    // Kiểm tra và lấy đường dẫn file DICOM từ request
-    const dicomFilePath = req.file?.path;
-    if (!dicomFilePath) {
-      return res.status(400).json({ error: "Không tìm thấy file DICOM!" });
+    const imagePath = req.file?.path;
+    if (!imagePath) {
+      return res.status(400).json({ error: "Không tìm thấy file ảnh!" });
     }
 
-    console.log(`File DICOM đã upload: ${dicomFilePath}`);
+    console.log(`File ảnh đã upload: ${imagePath}`);
 
-    // Phân tích ảnh X-ray
-    const result = await analyzeXrayImage(dicomFilePath);
+    const result = await analyzeXrayImage(imagePath);
 
-    // Trả về kết quả phân tích
     res.json(result);
   } catch (err) {
-    console.error(err);
+    console.error("Lỗi xử lý phân tích ảnh:", err);
     res.status(500).json({ error: "Đã xảy ra lỗi khi phân tích ảnh X-ray!" });
   }
 }

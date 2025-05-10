@@ -1,54 +1,64 @@
+import fs from "fs/promises";
 import sharp from "sharp";
 import * as ort from "onnxruntime-node";
-import { dicomToPng } from "../utils/imageProcessing.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import { dicomToPng } from "../utils/imageProcessing.js";
 import { softmax, getPredictedClass } from "../utils/calculation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Sử dụng ONNX model để phân tích ảnh X-quang
- * @param {string} dicomFilePath Đường dẫn đến file DICOM
- * @returns {Promise<any>} Kết quả inference từ model ONNX
+ * Kiểm tra xem có phải DICOM file không
+ * @param {string} filePath
+ * @returns {Promise<boolean>}
  */
-export async function analyzeXrayImage(dicomFilePath) {
-  try {
-    // Chuyển file DICOM sang PNG
-    const pngPath = await dicomToPng(dicomFilePath);
-    console.log(`Ảnh đã được chuyển thành công sang PNG: ${pngPath}`);
+async function isDicomFile(filePath) {
+  const buffer = await fs.readFile(filePath);
+  return buffer.slice(128, 132).toString() === "DICM";
+}
 
-    // Đường dẫn đến file ONNX model
+/**
+ * Sử dụng ONNX model để phân tích ảnh X-quang
+ * @param {string} filePath Đường dẫn đến file ảnh (DICOM hoặc PNG/JPEG)
+ * @returns {Promise<any>}
+ */
+export async function analyzeXrayImage(filePath) {
+  try {
+    let processedPath;
+
+    if (await isDicomFile(filePath)) {
+      processedPath = await dicomToPng(filePath);
+      console.log(`Đã chuyển DICOM sang PNG: ${processedPath}`);
+    } else {
+      processedPath = filePath;
+      console.log(`Ảnh thường (PNG/JPEG) nhận vào: ${processedPath}`);
+    }
+
     const modelPath = path.join(
       __dirname,
       "../../",
       "../ml/models/resnet50-pneumonia.onnx"
     );
 
-    // Tải mô hình ONNX
     const session = await ort.InferenceSession.create(modelPath);
+    const inputTensor = await preprocessImage(processedPath);
 
-    // Xử lý ảnh PNG thành tensor
-    const inputTensor = await preprocessImage(pngPath); // Preprocess ảnh PNG
     const feeds = { input: inputTensor };
-
-    // Chạy suy luận (inference)
     const results = await session.run(feeds);
 
-    // Xử lý logits thành xác suất
     const logits = results.output.cpuData;
     const probabilities = softmax(logits);
     const predictedClass = getPredictedClass(probabilities);
 
-    // Bọc kết quả trả về
     return {
       success: true,
       message: "Inference completed successfully",
       data: {
         probabilities,
         predictedClass,
-        classLabels: ["Normal", "Pneumonia"], // Gán nhãn lớp
+        classLabels: ["Normal", "Pneumonia"],
       },
     };
   } catch (error) {
@@ -61,26 +71,20 @@ export async function analyzeXrayImage(dicomFilePath) {
   }
 }
 
-/**
- * Tiền xử lý ảnh (PNG) trước khi đưa vào mô hình ONNX
- * @param {string} pngFilePath Đường dẫn đến file PNG
- * @returns {Promise<ort.Tensor>} Tensor đầu vào cho mô hình ONNX
- */
 async function preprocessImage(pngFilePath) {
   try {
-    // Resize ảnh về kích thước 224x224 và chuyển sang định dạng raw
     const imageBuffer = await sharp(pngFilePath)
-      .resize(224, 224) // Resize ảnh về 224x224
-      .raw() // Lấy dữ liệu ảnh ở định dạng raw (RGB)
+      .resize(224, 224)
+      .removeAlpha()
+      .ensureAlpha() // đảm bảo luôn có 3 channels RGB
+      .raw()
       .toBuffer();
 
-    // Chuyển đổi buffer thành tensor
     const floatImage = new Float32Array(imageBuffer.length);
     for (let i = 0; i < imageBuffer.length; i++) {
-      floatImage[i] = imageBuffer[i] / 255.0; // Chuẩn hóa giá trị pixel về [0, 1]
+      floatImage[i] = imageBuffer[i] / 255.0;
     }
 
-    // Tạo tensor với kích thước [1, 3, 224, 224]
     const tensor = new ort.Tensor("float32", floatImage, [1, 3, 224, 224]);
     return tensor;
   } catch (error) {
