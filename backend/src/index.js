@@ -2,10 +2,22 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import imageRoutes from "./routes/imageRoutes.js";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
 
 dotenv.config();
 
 const app = express();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export const uploadsDir = path.join(__dirname, "../uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 app.use(cors());
 

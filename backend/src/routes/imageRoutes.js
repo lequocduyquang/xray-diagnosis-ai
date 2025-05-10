@@ -6,6 +6,7 @@ import { analyzeXray } from "../controllers/imageControllers.js";
 import { dicomToPng } from "../utils/imageProcessing.js";
 import fs from "fs/promises";
 import path from "path";
+import { uploadsDir } from "../index.js";
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ cloudinary.config({
 // Cấu hình Multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Lưu file tạm thời vào thư mục "uploads"
+    cb(null, uploadsDir); // Lưu file tạm thời vào thư mục "uploads"
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`); // Đặt tên file tạm thời
