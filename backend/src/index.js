@@ -7,7 +7,17 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = ["https://xray-ui.vercel.app"];
+
+app.use(
+  cors((origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  })
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
