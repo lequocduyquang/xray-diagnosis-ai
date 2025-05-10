@@ -21,6 +21,7 @@
   "homepage": "https://github.com/lequocduyquang/xray-diagnosis-ai#readme",
   "description": "",
   "dependencies": {
+    "cors": "^2.8.5",
     "dicom-parser": "^1.8.21",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
