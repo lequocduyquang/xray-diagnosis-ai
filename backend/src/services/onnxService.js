@@ -40,8 +40,7 @@ export async function analyzeXrayImage(filePathOrUrl) {
     // Đường dẫn đến model ONNX
     const modelPath = path.join(
       __dirname,
-      "../../",
-      "../ml/models/resnet50-pneumonia.onnx"
+      "../ml-models/resnet50-pneumonia.onnx"
     );
 
     // Tạo session ONNX
