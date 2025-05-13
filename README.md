@@ -41,3 +41,26 @@ Dự án đang trong giai đoạn phát triển ban đầu. Các phần đã ho�
 
 - [ ]  Thêm Explainability (XAI): Tích hợp Grad-CAM / Heatmap để highlight vùng ảnh khiến mô hình quyết định.
 - [ ]  Checklist
+- [ ]  Dựng thêm pipeline để xử lý fine-tune định kỳ / Giải quyết bài toán model .pth được cập nhật sau khi fine-tune (Redis)
+
+Với Multimodal AI, chỉ cần bác sĩ nhập vào các thông tin lâm sàng như:
+  ✅ Input từ bác sĩ (Checklist):
+  - 👶 Giới tính (Nam / Nữ)
+  - 🎂 Tuổi (hoặc nhóm tuổi: <1, 1–5, >5 tuổi)
+  - 🌡️ Sốt (Có / Không)
+  - 😮‍💨 Ho (Có / Không)
+  - 💨 Thở nhanh (Có / Không)
+  - ⚖️ Cân nặng giảm (Có / Không)
+  - 🩸 SpO2 thấp (nếu có)
+  (v.v…)
+
+✅ Output mà mô hình có thể tự động dự đoán:
+🔍 Bé có mắc bệnh gì không?
+  - Pneumonia
+  - Viêm tiểu phế quản 
+  - Viêm phổi cấp
+  - Normal
+
+📋 Gợi ý các triệu chứng phụ kèm theo
+💬 Giải thích vùng ảnh (Grad-CAM) nếu có ảnh X-quang
+
