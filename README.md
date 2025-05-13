@@ -39,8 +39,5 @@ Dự án đang trong giai đoạn phát triển ban đầu. Các phần đã ho�
 
 ## 🧠 Kế hoạch tiếp theo
 
-- [ ] Thu thập và gắn nhãn thêm dữ liệu DICOM từ nhiều bệnh nhi.
-- [ ] Cải thiện pipeline tiền xử lý ảnh.
-- [ ] Fine-tune mô hình với tập dữ liệu lớn hơn.
-- [ ] Tích hợp hiển thị ảnh DICOM trực tiếp trên frontend (nếu có).
-- [ ] Xây dựng giao diện demo đơn giản để các bác sĩ thử nghiệm.
+- [ ]  Thêm Explainability (XAI): Tích hợp Grad-CAM / Heatmap để highlight vùng ảnh khiến mô hình quyết định.
+- [ ]  Checklist
