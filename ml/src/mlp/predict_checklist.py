@@ -7,7 +7,7 @@ from checklist_model import ChecklistMLP
 
 # Load model
 model = ChecklistMLP(input_dim=4)
-model.load_state_dict(torch.load('checklist_mlp.pth'))
+model.load_state_dict(torch.load('../models/checklist_mlp.pth'))
 model.eval()
 
 # Load scaler
