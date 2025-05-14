@@ -31,8 +31,13 @@ train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
 train_dataset = ChecklistDataset(train_df, feature_cols, disease_col, symptoms_cols, recommendation_col, scaler=None)
 val_dataset = ChecklistDataset(val_df, feature_cols, disease_col, symptoms_cols, recommendation_col, scaler=train_dataset.scaler)
 
+models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+
+os.makedirs(models_dir, exist_ok=True)
+
 # Lưu scaler
-joblib.dump(train_dataset.scaler, 'scaler.pkl')
+scaler_path = os.path.join(models_dir, 'scaler.pkl')
+joblib.dump(train_dataset.scaler, scaler_path)
 
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=16)
@@ -86,9 +91,5 @@ for epoch in range(20):
     recommendation_acc = accuracy_score(all_labels_recommendation, all_preds_recommendation)
     
     print(f"Epoch {epoch+1}, Disease Accuracy: {disease_acc:.4f}, Symptoms Accuracy: {symptoms_acc:.4f}, Recommendation Accuracy: {recommendation_acc:.4f}")
-
-models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
-
-os.makedirs(models_dir, exist_ok=True)
 
 torch.save(model.state_dict(), os.path.join(models_dir, 'checklist_mlp.pth'))
