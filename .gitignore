@@ -3,7 +3,7 @@ node_modules
 uploads
 
 # ML model
-ml
+ml/models
 
 # Python virtual environment
 venv/
