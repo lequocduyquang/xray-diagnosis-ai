@@ -2,7 +2,6 @@
 
 import torch
 import joblib
-import numpy as np
 from checklist_model import ChecklistMLP
 
 # Load model
