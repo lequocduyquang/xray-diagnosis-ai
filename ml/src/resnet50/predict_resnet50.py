@@ -1,10 +1,10 @@
 import torch
 from PIL import Image
-from resnet50_model import ResNet50Model
+from resnet50_model import ResNet50
 from resnet50_dataset import get_transforms
 
 # Load model
-model = ResNet50Model(num_classes=2)
+model = ResNet50(num_classes=2)
 model.load_state_dict(torch.load('../models/resnet50_model.pth'))
 model.eval()
 

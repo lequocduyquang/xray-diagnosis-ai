@@ -6,7 +6,7 @@ import os
 from sklearn.metrics import accuracy_score
 
 from resnet50_dataset import prepare_data
-from resnet50_model import ResNet50Model
+from resnet50_model import ResNet50
 
 # Đường dẫn đến dataset
 train_dir = '/content/drive/My Drive/chest_xray/train'
@@ -18,7 +18,7 @@ train_loader = prepare_data(train_dir, batch_size=32, is_folder=True)
 val_loader = prepare_data(val_dir, batch_size=32, is_folder=True)
 
 # Khởi tạo mô hình ResNet50
-model = ResNet50Model(num_classes=2)  # Sử dụng mô hình đã cải tiến theo OOP
+model = ResNet50(num_classes=2)  # Sử dụng mô hình đã cải tiến theo OOP
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 

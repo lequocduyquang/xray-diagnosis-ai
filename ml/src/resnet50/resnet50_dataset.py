@@ -1,8 +1,6 @@
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
-import pandas as pd
-import os
 
 def get_transforms():
     return transforms.Compose([
