@@ -2,40 +2,45 @@ import torch.nn as nn
 from torchvision import models
 
 class ResNet50(nn.Module):
-    def __init__(self, num_classes=2, pretrained=True, freeze_layers=True, dropout_rate=0.3):
+    def __init__(self, num_classes=2, use_pretrained=True, freeze_base=True, dropout_rate=0.3):
         """
-        Khởi tạo mô hình ResNet50.
+        Khởi tạo mô hình ResNet50 tuỳ chỉnh.
+
         Args:
-            num_classes (int): Số lượng lớp đầu ra.
-            pretrained (bool): Có sử dụng trọng số pre-trained hay không.
-            freeze_layers (bool): Có đóng băng các tầng pre-trained hay không.
-            dropout_rate (float): Tỷ lệ dropout để giảm overfitting.
+            num_classes (int): Số lượng lớp đầu ra (ví dụ: 2 cho phân loại nhị phân).
+            use_pretrained (bool): Có sử dụng trọng số ImageNet hay không.
+            freeze_base (bool): Nếu True thì đóng băng các tầng gốc ResNet để chỉ huấn luyện phần đầu ra.
+            dropout_rate (float): Tỉ lệ dropout trong head classifier để giảm overfitting.
         """
         super(ResNet50, self).__init__()
-        
-        # Load pre-trained ResNet50 model
-        self.base_model = models.resnet50(pretrained=pretrained)
-        
-        # Freeze layers if specified
-        if freeze_layers:
+
+        # Tải mô hình ResNet50 với trọng số ImageNet
+        self.base_model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT if use_pretrained else None)
+
+        # Nếu muốn chỉ fine-tune phần đầu ra, đóng băng các tầng backbone
+        if freeze_base:
             for param in self.base_model.parameters():
                 param.requires_grad = False
 
-        # Replace the final fully connected layer
-        num_ftrs = self.base_model.fc.in_features
+        # Lấy số đầu vào của fully connected layer cuối cùng
+        in_features = self.base_model.fc.in_features
+
+        # Thay thế fc layer bằng custom head: Linear -> ReLU -> Dropout -> Linear -> Output
         self.base_model.fc = nn.Sequential(
-            nn.Linear(num_ftrs, 512),
+            nn.Linear(in_features, 512),
             nn.ReLU(),
-            nn.Dropout(dropout_rate),
+            nn.Dropout(p=dropout_rate),
             nn.Linear(512, num_classes)
         )
 
     def forward(self, x):
         """
-        Forward pass của mô hình.
+        Truyền dữ liệu đầu vào qua mô hình để dự đoán đầu ra.
+
         Args:
-            x (torch.Tensor): Dữ liệu đầu vào (ảnh).
+            x (torch.Tensor): Batch ảnh đầu vào (shape: [batch_size, 3, H, W]).
+
         Returns:
-            torch.Tensor: Đầu ra của mô hình.
+            torch.Tensor: Đầu ra dự đoán (shape: [batch_size, num_classes]).
         """
         return self.base_model(x)
