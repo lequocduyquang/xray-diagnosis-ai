@@ -3,10 +3,11 @@ import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
 
-const csvFilePath = "./data.csv"; // đường dẫn file CSV
+// const csvFilePath = "./data.csv"; // đường dẫn file CSV
 const downloadFolder = "./downloads"; // thư mục lưu ảnh
-const batchSize = 10; // số ảnh tải mỗi lần
+const batchSize = 20; // số ảnh tải mỗi lần
 const delayMs = 10000; // delay 10 giây
+const idsFile = "./selected_image_ids.json";
 
 if (!fs.existsSync(downloadFolder)) {
   fs.mkdirSync(downloadFolder);
@@ -99,12 +100,10 @@ async function downloadInBatches(imageIds, batchSize, delayMs) {
   }
 }
 
-(async () => {
-  try {
-    const imageIds = await getImageIdsFromCSV(csvFilePath, 1000);
-    await downloadInBatches(imageIds, batchSize, delayMs);
-    console.log("All downloads finished!");
-  } catch (error) {
-    console.error("Error:", error);
-  }
-})();
+async function main() {
+  const ids = JSON.parse(fs.readFileSync(idsFile, "utf-8"));
+  await downloadInBatches(ids, batchSize, delayMs);
+  console.log("🎉 Đã tải xong tất cả ảnh!");
+}
+
+main();
