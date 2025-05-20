@@ -42,6 +42,7 @@ Dự án đang trong giai đoạn phát triển ban đầu. Các phần đã ho�
 - [ ]  Thêm Explainability (XAI): Tích hợp Grad-CAM / Heatmap để highlight vùng ảnh khiến mô hình quyết định.
 - [ ]  Checklist
 - [ ]  Dựng thêm pipeline để xử lý fine-tune định kỳ / Giải quyết bài toán model .pth được cập nhật sau khi fine-tune (Redis)
+- Reference https://nihcc.app.box.com/v/ChestXray-NIHCC
 
 Với Multimodal AI, chỉ cần bác sĩ nhập vào các thông tin lâm sàng như:
   ✅ Input từ bác sĩ (Checklist):
