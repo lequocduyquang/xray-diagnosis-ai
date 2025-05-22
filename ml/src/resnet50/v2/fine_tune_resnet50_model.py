@@ -3,14 +3,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
-from torchvision import transforms
+from torchvision import transforms, datasets
+from torch.utils.data import DataLoader, random_split
 
 from resnet50_model import ResNet50
-from resnet50_dataset import prepare_data
 
 # ==== Cấu hình đường dẫn và thiết bị ====
-train_dir = '/content/drive/My Drive/pediatric/train'
-val_dir = '/content/drive/My Drive/pediatric/val'
+train_dir = '/content/drive/My Drive/chest_xray_kid/train'
 models_dir = os.path.join(os.path.dirname(__file__), 'models')
 os.makedirs(models_dir, exist_ok=True)
 
@@ -36,13 +35,22 @@ val_transforms = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# ==== Khởi tạo DataLoader với augmentation ====
-train_loader = prepare_data(train_dir, batch_size=32, is_folder=True, transform=train_transforms)
-val_loader = prepare_data(val_dir, batch_size=32, is_folder=True, transform=val_transforms)
+# ==== Load full dataset và chia 80% train - 20% val ====
+full_dataset = datasets.ImageFolder(train_dir, transform=train_transforms)
+train_size = int(0.8 * len(full_dataset))
+val_size = len(full_dataset) - train_size
+
+train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+
+# Gán lại transform cho val dataset
+val_dataset.dataset.transform = val_transforms
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
 # ==== Load model đã train trên người lớn ====
 model = ResNet50(num_classes=2, use_pretrained=False, freeze_base=True, dropout_rate=0.3)
-model.load_state_dict(torch.load('/content/drive/My Drive/.../resnet50_model_v2.pth', map_location=device))
+model.load_state_dict(torch.load('/content/drive/My Drive/xray-diagnosis-ai/resnet50/v2/models/resnet50_model_v2.pth', map_location=device))
 
 # ==== Chỉ fine-tune classifier (fully connected layer) ====
 for param in model.base.parameters():
@@ -53,7 +61,7 @@ for param in model.classifier.parameters():
 
 model = model.to(device)
 
-# ==== Loss và optimizer với learning rate nhỏ hơn ====
+# ==== Loss và optimizer ====
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-5)
 
