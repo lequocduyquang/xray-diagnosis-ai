@@ -4,7 +4,6 @@ import pydicom
 import numpy as np
 from PIL import Image
 
-# Tự viết lại Dataset đọc từ folder chứa file DICOM
 class FineTuneResNet50Dataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
@@ -12,22 +11,36 @@ class FineTuneResNet50Dataset(Dataset):
         self.samples = []
         self.class_to_idx = {'NORMAL': 0, 'PNEUMONIA': 1}
 
-        for class_name in ['NORMAL', 'PNEUMONIA']:
+        for class_name in self.class_to_idx:
             class_dir = os.path.join(root_dir, class_name)
+            if not os.path.exists(class_dir):
+                print(f"⚠️ Warning: {class_dir} not found, skipping.")
+                continue
+
             for fname in os.listdir(class_dir):
                 if fname.endswith('.dicom') or fname.endswith('.dcm'):
-                    self.samples.append((os.path.join(class_dir, fname), self.class_to_idx[class_name]))
+                    fpath = os.path.join(class_dir, fname)
+                    self.samples.append((fpath, self.class_to_idx[class_name]))
+
+        print(f"📦 Loaded {len(self.samples)} DICOM samples from: {root_dir}")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         dcm_path, label = self.samples[idx]
+
+        if not os.path.exists(dcm_path):
+            raise FileNotFoundError(f"❌ DICOM file not found: {dcm_path}")
+
         dcm = pydicom.dcmread(dcm_path)
         img_array = dcm.pixel_array.astype(np.float32)
 
-        # Normalize về 0–255
-        img_array = (img_array - np.min(img_array)) / (np.max(img_array) - np.min(img_array)) * 255.0
+        # Normalize to [0, 255]
+        img_array -= img_array.min()
+        img_array /= img_array.max()
+        img_array *= 255.0
+
         img = Image.fromarray(img_array).convert('RGB')
 
         if self.transform:
