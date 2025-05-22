@@ -4,10 +4,10 @@ import path from "path";
 import csv from "csv-parser";
 
 // const csvFilePath = "./data.csv"; // đường dẫn file CSV
-const downloadFolder = "./downloads"; // thư mục lưu ảnh
+const downloadFolder = "./NORMAL"; // thư mục lưu ảnh
 const batchSize = 20; // số ảnh tải mỗi lần
 const delayMs = 10000; // delay 10 giây
-const idsFile = "./selected_image_ids.json";
+const idsFile = "./random_500_no_finding_image_ids.json";
 
 if (!fs.existsSync(downloadFolder)) {
   fs.mkdirSync(downloadFolder);
@@ -32,7 +32,7 @@ async function downloadImage(imageId) {
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
         cookie:
-          "csrftoken=AD7FIJwTrySxtNhTK1UkWWr2tqQGiTFr; sessionid=cmrhb1gvjm0qbbyx8jsv04e1bqxqi2z7; _gid=GA1.2.2041111508.1747471507; _ga=GA1.1.1650955361.1746885588; _ga_YKC8ZQQ4FF=GS2.1.s1747534105$o12$g1$t1747536032$j0$l0$h0",
+          "srftoken=AD7FIJwTrySxtNhTK1UkWWr2tqQGiTFr; sessionid=cmrhb1gvjm0qbbyx8jsv04e1bqxqi2z7; _gid=GA1.2.2041111508.1747471507; _gat_gtag_UA_87592301_7=1; _ga_YKC8ZQQ4FF=GS2.1.s1747751307$o23$g0$t1747751307$j0$l0$h0; _ga=GA1.1.1650955361.1746885588",
         priority: "u=0, i",
         referer: "https://physionet.org/content/vindr-pcxr/1.0.0/train/",
         "sec-ch-ua": `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`,
