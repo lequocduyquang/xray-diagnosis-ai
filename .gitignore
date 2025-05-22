@@ -28,3 +28,4 @@ backend/filtered_image_labels_train.csv
 backend/NORMAL
 backend/PNEUMONIA
 backend/mock
+backend/scripts

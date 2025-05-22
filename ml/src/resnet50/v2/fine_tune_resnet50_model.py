@@ -3,10 +3,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
-from torchvision import transforms, datasets
+from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 
 from resnet50_model import ResNet50
+from fine_tune_resnet50_dataset import FineTuneResNet50Dataset
 
 # ==== Cấu hình đường dẫn và thiết bị ====
 train_dir = '/content/drive/My Drive/chest_xray_kid/train'
@@ -35,14 +36,12 @@ val_transforms = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# ==== Load full dataset và chia 80% train - 20% val ====
-full_dataset = datasets.ImageFolder(train_dir, transform=train_transforms)
+# ==== Load DICOM dataset và chia 80% train - 20% val ====
+full_dataset = FineTuneResNet50Dataset(train_dir, transform=train_transforms)
 train_size = int(0.8 * len(full_dataset))
 val_size = len(full_dataset) - train_size
 
 train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-# Gán lại transform cho val dataset
 val_dataset.dataset.transform = val_transforms
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -52,7 +51,7 @@ val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 model = ResNet50(num_classes=2, use_pretrained=False, freeze_base=True, dropout_rate=0.3)
 model.load_state_dict(torch.load('/content/drive/My Drive/xray-diagnosis-ai/resnet50/v2/models/resnet50_model_v2.pth', map_location=device))
 
-# ==== Chỉ fine-tune classifier (fully connected layer) ====
+# ==== Chỉ fine-tune phần classifier ====
 for param in model.base.parameters():
     param.requires_grad = False
 
