@@ -31,8 +31,7 @@ async function downloadImage(imageId) {
         accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-        cookie:
-          "srftoken=AD7FIJwTrySxtNhTK1UkWWr2tqQGiTFr; sessionid=cmrhb1gvjm0qbbyx8jsv04e1bqxqi2z7; _gid=GA1.2.2041111508.1747471507; _gat_gtag_UA_87592301_7=1; _ga_YKC8ZQQ4FF=GS2.1.s1747751307$o23$g0$t1747751307$j0$l0$h0; _ga=GA1.1.1650955361.1746885588",
+        cookie: "your_cookie_here", // Thay thế bằng cookie của bạn
         priority: "u=0, i",
         referer: "https://physionet.org/content/vindr-pcxr/1.0.0/train/",
         "sec-ch-ua": `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`,

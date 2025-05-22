@@ -52,10 +52,10 @@ model = ResNet50(num_classes=2, use_pretrained=False, freeze_base=True, dropout_
 model.load_state_dict(torch.load('/content/drive/My Drive/xray-diagnosis-ai/resnet50/v2/models/resnet50_model_v2.pth', map_location=device))
 
 # ==== Chỉ fine-tune phần classifier ====
-for param in model.base.parameters():
+for param in model.base_model.parameters():
     param.requires_grad = False
 
-for param in model.classifier.parameters():
+for param in model.base_model.fc.parameters():
     param.requires_grad = True
 
 model = model.to(device)
