@@ -3,9 +3,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import StratifiedShuffleSplit
 from torchvision import transforms
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from collections import Counter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -13,7 +12,8 @@ from resnet50_model import ResNet50
 from fine_tune_resnet50_dataset import FineTuneResNet50Dataset
 
 # ==== Cấu hình đường dẫn và thiết bị ====
-train_dir = '/content/chest_xray_kid/train'
+train_dir = '/content/chest_xray_kid/train/train'
+val_dir = '/content/chest_xray_kid/val/val'
 models_dir = os.path.join(os.path.dirname(__file__), 'models')
 os.makedirs(models_dir, exist_ok=True)
 
@@ -39,17 +39,9 @@ val_transforms = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# ==== Load dataset và chia train/val theo tỉ lệ class ====
-full_dataset = FineTuneResNet50Dataset(train_dir, transform=train_transforms)
-all_labels = [label for _, label in full_dataset]
-
-splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-for train_idx, val_idx in splitter.split(list(range(len(full_dataset))), all_labels):
-    train_dataset = Subset(full_dataset, train_idx)
-    val_dataset = Subset(full_dataset, val_idx)
-
-# Gán transform riêng cho validation
-val_dataset.dataset.transform = val_transforms
+# ==== Load dataset ====
+train_dataset = FineTuneResNet50Dataset(train_dir, transform=train_transforms)
+val_dataset = FineTuneResNet50Dataset(val_dir, transform=val_transforms)
 
 # ==== Dataloader ====
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -67,8 +59,8 @@ for param in model.base_model.fc.parameters():
 
 model = model.to(device)
 
-# ==== Tính class weights ====
-labels = [label for _, label in full_dataset]
+# ==== Tính class weights từ toàn bộ tập train ====
+labels = [label for _, label in train_dataset]
 class_counts = Counter(labels)
 total = sum(class_counts.values())
 weights = [total / class_counts[i] for i in sorted(class_counts.keys())]
@@ -135,7 +127,7 @@ for epoch in range(num_epochs):
     # Lưu best model
     if val_accuracy > best_val_acc:
         best_val_acc = val_accuracy
-        model_path = os.path.join(models_dir, 'resnet50_model_v2_finetune_pediatric.pth')
+        model_path = os.path.join(models_dir, 'resnet50_model_v2_finetune.pth')
         torch.save(model.state_dict(), model_path)
         print(f"✅ Saved best model to {model_path} (Val Acc: {val_accuracy:.4f})")
 
