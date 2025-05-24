@@ -12,8 +12,8 @@ from resnet50_model import ResNet50
 from fine_tune_resnet50_dataset import FineTuneResNet50Dataset
 
 # ==== Cấu hình đường dẫn và thiết bị ====
-train_dir = '/content/chest_xray_kid/train/train'
-val_dir = '/content/chest_xray_kid/val/val'
+train_dir = '/content/chest_xray_kid/train'
+val_dir = '/content/chest_xray_kid/val'
 models_dir = os.path.join(os.path.dirname(__file__), 'models')
 os.makedirs(models_dir, exist_ok=True)
 
