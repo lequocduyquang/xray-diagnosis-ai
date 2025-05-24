@@ -46,7 +46,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Load mô hình ResNet50
     model = ResNet50(num_classes=2)
-    model_path = '/content/drive/MyDrive/xray-diagnosis-ai/v2/models/resnet50_model_v2.pth'
+    model_path = '/content/drive/My Drive/xray-diagnosis-ai/resnet50/v2/models/resnet50_model_v2.pth'
     
     test_dir = '/content/drive/My Drive/chest_xray/test'
     # Load trọng số mô hình
