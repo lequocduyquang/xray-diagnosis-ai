@@ -40,8 +40,8 @@ def convert_all_dicom(dicom_root, jpeg_root):
             dicom_to_jpeg(dicom_path, jpeg_path)
 
 # Thư mục gốc chứa DICOM và nơi lưu JPEG
-dicom_train_dir = '/content/chest_xray_kid_multi_labels/train'
-jpeg_train_dir = '/content/chest_xray_kid_multi_labels_jpeg/train'
+dicom_train_dir = '/content/images/train'
+jpeg_train_dir = '/content/images_jpeg/train'
 
 print("⏳ Converting all DICOM files...")
 convert_all_dicom(dicom_train_dir, jpeg_train_dir)

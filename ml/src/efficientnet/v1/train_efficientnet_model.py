@@ -61,8 +61,6 @@ def multilabel_stratify_labels(dataset):
     for _, labels in dataset:
         all_labels.append(labels.numpy())
     all_labels = np.array(all_labels)
-    # Chuyển mỗi nhãn đa nhãn thành chuỗi bit để tạo stratify key
-    # Ví dụ: [0,1,0,1] -> '0101'
     keys = [''.join(map(str, map(int, row))) for row in all_labels]
     return keys
 
@@ -106,7 +104,39 @@ def train_one_epoch(model, loader, criterion, optimizer):
         running_loss += loss.item() * images.size(0)
     return running_loss / len(loader.dataset)
 
-def validate(model, loader, criterion):
+def find_best_thresholds(model, loader, thresholds=np.arange(0.1, 0.91, 0.05)):
+    """
+    Tìm threshold tối ưu cho mỗi class dựa trên validation loader.
+    Trả về threshold đơn hoặc mảng threshold cho từng class.
+    Ở đây mình làm threshold chung cho tất cả các class (có thể nâng cấp nếu muốn).
+    """
+    model.eval()
+    all_labels, all_outputs = [], []
+
+    with torch.no_grad():
+        for images, labels in tqdm(loader, desc="Find Best Thresholds", leave=False):
+            images = images.to(device)
+            outputs = model(images)
+            all_outputs.append(torch.sigmoid(outputs).cpu().numpy())
+            all_labels.append(labels.numpy())
+
+    all_outputs = np.concatenate(all_outputs, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    best_threshold = 0.5
+    best_f1 = 0.0
+
+    for thr in thresholds:
+        preds = (all_outputs > thr).astype(int)
+        f1 = f1_score(all_labels, preds, average='weighted', zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = thr
+
+    print(f"  🔍 Best threshold found: {best_threshold:.2f} with weighted F1: {best_f1:.4f}")
+    return best_threshold
+
+def validate(model, loader, criterion, threshold=0.5):
     model.eval()
     val_loss = 0.0
     all_labels, all_preds = [], []
@@ -118,7 +148,7 @@ def validate(model, loader, criterion):
             loss = criterion(outputs, labels)
             val_loss += loss.item() * images.size(0)
 
-            preds = (torch.sigmoid(outputs).cpu().numpy() > 0.5).astype(int)
+            preds = (torch.sigmoid(outputs).cpu().numpy() > threshold).astype(int)
             all_preds.append(preds)
             all_labels.append(labels.cpu().numpy().astype(int))
 
@@ -129,25 +159,21 @@ def validate(model, loader, criterion):
 
     return val_loss, val_f1
 
-def save_model(model, epoch, val_f1, path):
-    torch.save(model.state_dict(), path)
-    print(f"✅ Saved best model at epoch {epoch+1} | Val F1: {val_f1:.4f} | Path: {path}")
+def save_model(model, epoch, val_f1, threshold, path):
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'threshold': threshold
+    }, path)
+    print(f"✅ Saved best model at epoch {epoch+1} | Val F1: {val_f1:.4f} | Threshold: {threshold:.2f} | Path: {path}")
 
 def filter_rare_samples(dataset, num_classes, min_samples=10):
-    """
-    Lọc bỏ những mẫu có chứa nhãn nào có tổng số mẫu < min_samples.
-    Trả về danh sách index mẫu được giữ lại.
-    """
-    # Tính tổng số mẫu mỗi class
     label_counts = np.zeros(num_classes, dtype=int)
     for _, labels in dataset:
         label_counts += labels.numpy().astype(int)
     
-    # Tìm những class quá hiếm
     rare_classes = [i for i, count in enumerate(label_counts) if count < min_samples]
     print(f"Rare classes (count<{min_samples}): {rare_classes}")
 
-    # Lọc index mẫu không chứa nhãn thuộc rare_classes
     valid_indices = []
     for idx in range(len(dataset)):
         _, labels = dataset[idx]
@@ -159,21 +185,17 @@ def filter_rare_samples(dataset, num_classes, min_samples=10):
 
 def main():
     dataset = EfficientNetDataset(csv_file, image_dir, transform=transform)
-    num_classes = dataset[0][1].shape[0]  # Lấy số nhãn trực tiếp từ shape nhãn đầu tiên
+    num_classes = dataset[0][1].shape[0]
     print(f"Number of classes: {num_classes}")
 
-    # Lọc mẫu quá hiếm
     valid_indices = filter_rare_samples(dataset, num_classes=num_classes, min_samples=10)
-    
-    # Tạo dataset con chứa mẫu hợp lệ
     filtered_dataset = Subset(dataset, valid_indices)
 
-    # Lấy stratify keys trên filtered dataset
     stratify_keys = multilabel_stratify_labels(filtered_dataset)
-
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     best_f1_overall = 0.0
+    best_threshold_overall = 0.5
 
     for fold, (train_idx, val_idx) in enumerate(skf.split(np.arange(len(filtered_dataset)), stratify_keys)):
         print(f"\n===== Fold {fold+1}/{n_splits} =====")
@@ -184,21 +206,29 @@ def main():
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
         best_f1 = 0.0
+        best_threshold = 0.5
+
         for epoch in range(num_epochs):
-            print(f"\n🌀 Epoch {epoch+1}/{num_epochs}")
             train_loss = train_one_epoch(model, train_loader, criterion, optimizer)
-            val_loss, val_f1 = validate(model, val_loader, criterion)
+            val_loss, val_f1 = validate(model, val_loader, criterion, threshold=best_threshold)
+            print(f"Epoch {epoch+1}/{num_epochs} | Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | Val F1: {val_f1:.4f} | Threshold: {best_threshold:.2f}")
 
-            print(f"📊 Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val F1 (weighted): {val_f1:.4f}")
+            # Tìm threshold tốt nhất trên validation set mỗi epoch
+            best_threshold = find_best_thresholds(model, val_loader)
+            val_loss, val_f1 = validate(model, val_loader, criterion, threshold=best_threshold)
 
+            # Lưu model nếu F1 cải thiện
             if val_f1 > best_f1:
                 best_f1 = val_f1
-                save_model(model, epoch, val_f1, os.path.join(models_dir, f"efficientnet_b0_fold{fold+1}.pth"))
+                save_model(model, epoch, val_f1, best_threshold, os.path.join(models_dir, f"best_model_fold{fold+1}.pth"))
 
         if best_f1 > best_f1_overall:
             best_f1_overall = best_f1
+            best_threshold_overall = best_threshold
 
-    print(f"\n🎉 Training completed. Best overall weighted F1: {best_f1_overall:.4f}")
+    print(f"\n=== Training complete ===")
+    print(f"Best overall weighted F1: {best_f1_overall:.4f}")
+    print(f"Best overall threshold: {best_threshold_overall:.2f}")
 
 if __name__ == "__main__":
     main()

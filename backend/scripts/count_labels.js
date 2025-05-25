@@ -10,7 +10,9 @@ fs.createReadStream(csvFile)
   .pipe(csv())
   .on("headers", (headers) => {
     // Lấy tên các nhãn bệnh (bỏ image_id, rad_ID)
-    labelNames = headers.filter((h) => h !== "image_id" && h !== "rad_ID");
+    labelNames = headers.filter(
+      (h) => h !== "image_id" && h !== "rad_ID" && h !== "No finding"
+    );
     labelNames.forEach((label) => (labelCounts[label] = 0));
   })
   .on("data", (row) => {
