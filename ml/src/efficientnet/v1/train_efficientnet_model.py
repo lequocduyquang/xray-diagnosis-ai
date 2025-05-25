@@ -7,7 +7,8 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
-from efficientnet_pytorch import EfficientNet
+from torchvision.models import efficientnet_b0
+from torchvision.models import EfficientNet_B0_Weights
 from efficientnet_dataset import EfficientNetDataset
 from tqdm import tqdm
 
@@ -86,14 +87,18 @@ def prepare_fold_dataloaders(dataset, train_idx, val_idx):
     return train_loader, val_loader
 
 def build_model(num_classes):
-    model = EfficientNet.from_pretrained('efficientnet-b0')
-    in_features = model._fc.in_features
-    model._fc = nn.Linear(in_features, num_classes)
-    return model.to(device)
+    # Load pretrained EfficientNet-B0 (ImageNet)
+    base_model = efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
+
+    in_features = base_model.classifier[-1].in_features
+    base_model.classifier[-1] = nn.Linear(in_features, num_classes)
+
+    return base_model.to(device)
 
 def train_one_epoch(model, loader, criterion, optimizer):
     model.train()
     running_loss = 0.0
+    total = 0
     for images, labels in tqdm(loader, desc="Training", leave=False):
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
@@ -102,7 +107,8 @@ def train_one_epoch(model, loader, criterion, optimizer):
         loss.backward()
         optimizer.step()
         running_loss += loss.item() * images.size(0)
-    return running_loss / len(loader.dataset)
+        total += images.size(0)
+    return running_loss / total if total > 0 else 0.0
 
 def find_best_thresholds(model, loader, thresholds=np.arange(0.1, 0.91, 0.05)):
     """
