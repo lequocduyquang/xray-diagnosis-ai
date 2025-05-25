@@ -22,8 +22,8 @@ class EfficientNetClassifier(nn.Module):
 
     def unfreeze_backbone(self, unfreeze_ratio=0.2):
         print("🔓 Unfreezing partial backbone...")
-        total_layers = list(self.backbone.named_children())
-        unfreeze_count = int(len(total_layers) * unfreeze_ratio)
-        for name, module in total_layers[-unfreeze_count:]:
-            for param in module.parameters():
-                param.requires_grad = True
+        params = list(self.backbone.parameters())
+        unfreeze_count = int(len(params) * unfreeze_ratio)
+        # Unfreeze last unfreeze_count parameters
+        for param in params[-unfreeze_count:]:
+            param.requires_grad = True

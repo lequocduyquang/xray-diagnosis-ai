@@ -1,169 +1,204 @@
-import numpy as np
+import os
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
-from sklearn.metrics import f1_score
+from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
+from sklearn.metrics import f1_score
+from sklearn.model_selection import StratifiedKFold
+from efficientnet_pytorch import EfficientNet
 from efficientnet_dataset import EfficientNetDataset
-from efficientnet_model import EfficientNetClassifier
-from focal_loss import FocalLoss
+from tqdm import tqdm
 
 # ==== CONFIG ====
-csv_path = "/content/drive/MyDrive/chest_xray_children/image_labels_train.csv"
-image_dir = "/content/drive/MyDrive/chest_xray_children/train"
-save_model_path = "/content/drive/MyDrive/chest_xray_children/efficientnet_xray_best.pth"
-batch_size = 16  # Giảm để tối ưu bộ nhớ trên Colab
-lr = 1e-4
+csv_file = "/content/drive/My Drive/chest_xray_kid_multi_labels_jpeg/filtered_image_labels_train.csv"
+image_dir = "/content/drive/My Drive/chest_xray_kid_multi_labels_jpeg/train"
+models_dir = os.path.join(os.path.dirname(__file__), 'models')
+os.makedirs(models_dir, exist_ok=True)
+
+batch_size = 32
 num_epochs = 20
-patience = 5
+num_workers = 2
+n_splits = 3  # Giảm fold từ 5 xuống 3
+learning_rate = 1e-4
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-fine_tune_epoch = 10  # Bắt đầu fine-tune sau epoch 10
+print(f"Using device: {device}")
 
-# ==== TRANSFORM ====
-train_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-val_transform = transforms.Compose([
+# ==== TRANSFORMS ====
+transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-# ==== DATA ====
-dataset = EfficientNetDataset(csv_file=csv_path, image_dir=image_dir, transform=None)
-dataset.check_dicom_files()  # Kiểm tra file DICOM lỗi
-num_classes = len(dataset.get_class_names())
+# ==== Focal Loss cho multi-label ====
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+        self.bce = nn.BCEWithLogitsLoss(reduction='none')
 
-# Tính class weights
-num_samples = len(dataset)
-label_counts = dataset.targets.sum(axis=0)
-class_weights = num_samples / (2.0 * label_counts)
-class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
-print("Class weights:", class_weights)
+    def forward(self, inputs, targets):
+        bce_loss = self.bce(inputs, targets)
+        probas = torch.sigmoid(inputs)
+        p_t = probas * targets + (1 - probas) * (1 - targets)
+        alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
+        focal_loss = alpha_t * (1 - p_t) ** self.gamma * bce_loss
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
 
-# In phân bố nhãn
-def print_label_distribution(dataset):
-    label_sums = dataset.targets.sum(axis=0)
-    print("Phân bố nhãn:")
-    for name, count in zip(dataset.get_class_names(), label_sums):
-        print(f"  - {name}: {int(count)} mẫu ({count/len(dataset.targets)*100:.2f}%)")
+# ==== Hàm lấy nhãn đa nhãn dạng 1D array để StratifiedKFold nhóm theo multi-label ====
+def multilabel_stratify_labels(dataset):
+    all_labels = []
+    for _, labels in dataset:
+        all_labels.append(labels.numpy())
+    all_labels = np.array(all_labels)
+    # Chuyển mỗi nhãn đa nhãn thành chuỗi bit để tạo stratify key
+    # Ví dụ: [0,1,0,1] -> '0101'
+    keys = [''.join(map(str, map(int, row))) for row in all_labels]
+    return keys
 
-print_label_distribution(dataset)
+def print_label_distribution(dataset, dataset_name):
+    all_labels = []
+    for _, labels in dataset:
+        all_labels.append(labels.numpy())
+    all_labels = np.array(all_labels)
+    label_sums = np.sum(all_labels, axis=0)
+    print(f"\nLabel distribution in {dataset_name}:")
+    for idx, count in enumerate(label_sums):
+        print(f"  Class {idx}: {int(count)} samples")
 
-# Chia train/val
-train_size = int(0.8 * len(dataset))
-val_size = len(dataset) - train_size
-train_ds, val_ds = random_split(dataset, [train_size, val_size])
-train_ds.dataset.transform = train_transform
-val_ds.dataset.transform = val_transform
+def prepare_fold_dataloaders(dataset, train_idx, val_idx):
+    train_dataset = Subset(dataset, train_idx)
+    val_dataset = Subset(dataset, val_idx)
 
-# DataLoader
-train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    print_label_distribution(train_dataset, "Train Set")
+    print_label_distribution(val_dataset, "Validation Set")
 
-# ==== MODEL ====
-model = EfficientNetClassifier(
-    num_classes=num_classes,
-    model_name='efficientnet-b0',
-    freeze_backbone=True,  # Đóng băng backbone ban đầu
-    dropout_rate=0.3
-).to(device)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    return train_loader, val_loader
 
-criterion = FocalLoss(alpha=class_weights, gamma=2, reduction='mean', device=device)
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
-scaler = torch.cuda.amp.GradScaler()
+def build_model(num_classes):
+    model = EfficientNet.from_pretrained('efficientnet-b0')
+    in_features = model._fc.in_features
+    model._fc = nn.Linear(in_features, num_classes)
+    return model.to(device)
 
-# ==== TRAINING ====
-best_val_f1 = 0
-epochs_no_improve = 0
-history = {'train_loss': [], 'val_loss': [], 'val_f1': []}
-
-for epoch in range(num_epochs):
-    # Fine-tune theo từng giai đoạn
-    if epoch == 10:
-        print("🔄 Epoch 10: Mở 20% backbone")
-        model.unfreeze_backbone(unfreeze_ratio=0.2)
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr/10)
-    elif epoch == 13:
-        print("🔄 Epoch 13: Mở 50% backbone")
-        model.unfreeze_backbone(unfreeze_ratio=0.5)
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr/20)
-    elif epoch == 16:
-        print("🔄 Epoch 16: Mở 80% backbone")
-        model.unfreeze_backbone(unfreeze_ratio=0.8)
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr/50)
-    
-    # Train
+def train_one_epoch(model, loader, criterion, optimizer):
     model.train()
-    train_loss = 0
-    for images, labels in train_loader:
+    running_loss = 0.0
+    for images, labels in tqdm(loader, desc="Training", leave=False):
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item() * images.size(0)
+    return running_loss / len(loader.dataset)
+
+def validate(model, loader, criterion):
+    model.eval()
+    val_loss = 0.0
+    all_labels, all_preds = [], []
+
+    with torch.no_grad():
+        for images, labels in tqdm(loader, desc="Validating", leave=False):
+            images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        train_loss += loss.item()
-    
-    # Validation
-    model.eval()
-    val_loss = 0
-    all_preds, all_labels = [], []
-    
-    with torch.no_grad():
-        for images, labels in val_loader:
-            images, labels = images.to(device), labels.to(device)
-            with torch.cuda.amp.autocast():
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-            val_loss += loss.item()
-            
-            preds = torch.sigmoid(outputs).cpu().numpy() > 0.3
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(preds)
-    
-    # Tính F1-score
-    all_preds = np.array(all_preds)
-    all_labels = np.array(all_labels)
-    val_f1 = f1_score(all_labels, all_preds, average="micro")
-    f1_per_class = f1_score(all_labels, all_preds, average=None)
-    
-    # Cập nhật history
-    history['train_loss'].append(train_loss / len(train_loader))
-    history['val_loss'].append(val_loss / len(val_loader))
-    history['val_f1'].append(val_f1)
-    
-    # Scheduler step
-    scheduler.step(val_f1)
-    
-    # In kết quả
-    print(f"[Epoch {epoch+1}/{num_epochs}] "
-          f"Train Loss: {train_loss/len(train_loader):.4f} | "
-          f"Val Loss: {val_loss/len(val_loader):.4f} | "
-          f"Val F1 (micro): {val_f1:.4f} | "
-          f"LR: {optimizer.param_groups[0]['lr']:.6f}")
-    print("F1 per class:", {name: f"{f1:.4f}" for name, f1 in zip(dataset.get_class_names(), f1_per_class)})
-    
-    # Lưu model tốt nhất
-    if val_f1 > best_val_f1:
-        best_val_f1 = val_f1
-        torch.save(model.state_dict(), save_model_path)
-        print(f"✅ Saved best model to {save_model_path} (Val F1: {val_f1:.4f})")
-        epochs_no_improve = 0
-    else:
-        epochs_no_improve += 1
-        if epochs_no_improve >= patience:
-            print("⏹ Early stopping.")
-            break
+            val_loss += loss.item() * images.size(0)
 
-print("🏁 Training complete. Best Val F1:", best_val_f1)
+            preds = (torch.sigmoid(outputs).cpu().numpy() > 0.5).astype(int)
+            all_preds.append(preds)
+            all_labels.append(labels.cpu().numpy().astype(int))
+
+    val_loss /= len(loader.dataset)
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+    val_f1 = f1_score(all_labels, all_preds, average="weighted", zero_division=0)
+
+    return val_loss, val_f1
+
+def save_model(model, epoch, val_f1, path):
+    torch.save(model.state_dict(), path)
+    print(f"✅ Saved best model at epoch {epoch+1} | Val F1: {val_f1:.4f} | Path: {path}")
+
+def filter_rare_samples(dataset, num_classes, min_samples=10):
+    """
+    Lọc bỏ những mẫu có chứa nhãn nào có tổng số mẫu < min_samples.
+    Trả về danh sách index mẫu được giữ lại.
+    """
+    # Tính tổng số mẫu mỗi class
+    label_counts = np.zeros(num_classes, dtype=int)
+    for _, labels in dataset:
+        label_counts += labels.numpy().astype(int)
+    
+    # Tìm những class quá hiếm
+    rare_classes = [i for i, count in enumerate(label_counts) if count < min_samples]
+    print(f"Rare classes (count<{min_samples}): {rare_classes}")
+
+    # Lọc index mẫu không chứa nhãn thuộc rare_classes
+    valid_indices = []
+    for idx in range(len(dataset)):
+        _, labels = dataset[idx]
+        labels_np = labels.numpy().astype(int)
+        if not any(labels_np[i] == 1 for i in rare_classes):
+            valid_indices.append(idx)
+    print(f"Samples before filtering: {len(dataset)}, after filtering: {len(valid_indices)}")
+    return valid_indices
+
+def main():
+    dataset = EfficientNetDataset(csv_file, image_dir, transform=transform)
+    num_classes = dataset[0][1].shape[0]  # Lấy số nhãn trực tiếp từ shape nhãn đầu tiên
+    print(f"Number of classes: {num_classes}")
+
+    # Lọc mẫu quá hiếm
+    valid_indices = filter_rare_samples(dataset, num_classes=num_classes, min_samples=10)
+    
+    # Tạo dataset con chứa mẫu hợp lệ
+    filtered_dataset = Subset(dataset, valid_indices)
+
+    # Lấy stratify keys trên filtered dataset
+    stratify_keys = multilabel_stratify_labels(filtered_dataset)
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    best_f1_overall = 0.0
+
+    for fold, (train_idx, val_idx) in enumerate(skf.split(np.arange(len(filtered_dataset)), stratify_keys)):
+        print(f"\n===== Fold {fold+1}/{n_splits} =====")
+        train_loader, val_loader = prepare_fold_dataloaders(filtered_dataset, train_idx, val_idx)
+        model = build_model(num_classes)
+
+        criterion = FocalLoss(alpha=0.25, gamma=2)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+        best_f1 = 0.0
+        for epoch in range(num_epochs):
+            print(f"\n🌀 Epoch {epoch+1}/{num_epochs}")
+            train_loss = train_one_epoch(model, train_loader, criterion, optimizer)
+            val_loss, val_f1 = validate(model, val_loader, criterion)
+
+            print(f"📊 Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val F1 (weighted): {val_f1:.4f}")
+
+            if val_f1 > best_f1:
+                best_f1 = val_f1
+                save_model(model, epoch, val_f1, os.path.join(models_dir, f"efficientnet_b0_fold{fold+1}.pth"))
+
+        if best_f1 > best_f1_overall:
+            best_f1_overall = best_f1
+
+    print(f"\n🎉 Training completed. Best overall weighted F1: {best_f1_overall:.4f}")
+
+if __name__ == "__main__":
+    main()
