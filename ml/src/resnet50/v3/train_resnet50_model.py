@@ -6,14 +6,34 @@ from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
 from resnet50_dataset import XRayDataset
 from resnet50_model import ResNet50
 
+# ==== FOCAL LOSS DEFINITION ====
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        pt = torch.exp(-BCE_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
 # ==== Cấu hình ====
-DATA_DIR = "/content/drive/My Drive/chest_xray_kid_multi_labels_jpeg/train"
-CSV_PATH = "/content/drive/My Drive/chest_xray_kid_multi_labels_jpeg/filtered_image_labels_train.csv"
+DATA_DIR = "/content/drive/MyDrive/chest_xray_kid_multi_labels_jpeg/train"
+CSV_PATH = "/content/drive/MyDrive/chest_xray_kid_multi_labels_jpeg/filtered_image_labels_train.csv"
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -31,12 +51,20 @@ np.random.seed(SEED)
 # ==== Load CSV và chuẩn bị labels ====
 df = pd.read_csv(CSV_PATH)
 label_cols = df.columns[1:].tolist()
-
-# Kiểm tra và chuẩn bị label matrix
 labels = df[label_cols].values.astype(np.float32)
 
-# ==== Dataset full (chưa chia train/val) ====
-full_dataset = XRayDataset(image_dir=DATA_DIR, df=df, label_cols=label_cols)
+# ==== Hàm tìm threshold tối ưu cho từng class ====
+def find_best_thresholds(y_true, y_probs):
+    thresholds = np.arange(0.1, 0.9, 0.01)
+    best_thresholds = []
+    for i in range(y_true.shape[1]):
+        f1_scores = []
+        for t in thresholds:
+            preds = (y_probs[:, i] > t).astype(int)
+            f1_scores.append(f1_score(y_true[:, i], preds))
+        best_t = thresholds[np.argmax(f1_scores)]
+        best_thresholds.append(best_t)
+    return best_thresholds
 
 # ==== Khởi tạo MultilabelStratifiedKFold ====
 mskf = MultilabelStratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=SEED)
@@ -45,20 +73,23 @@ mskf = MultilabelStratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=S
 for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), labels), 1):
     print(f"\n===== Fold {fold}/{N_SPLITS} =====")
 
-    train_subset = Subset(full_dataset, train_idx)
-    val_subset = Subset(full_dataset, val_idx)
+    df_train = df.iloc[train_idx].reset_index(drop=True)
+    df_val = df.iloc[val_idx].reset_index(drop=True)
 
-    train_loader = DataLoader(train_subset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_subset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+    train_dataset = XRayDataset(image_dir=DATA_DIR, df=df_train, label_cols=label_cols, is_train=True)
+    val_dataset = XRayDataset(image_dir=DATA_DIR, df=df_val, label_cols=label_cols, is_train=False)
 
-    # Khởi tạo model mới cho mỗi fold
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+
     model = ResNet50(num_classes=NUM_CLASSES, use_pretrained=True, freeze_base=False, dropout_rate=0.3)
     model = model.to(DEVICE)
 
-    criterion = nn.BCELoss()  # Binary Cross-Entropy cho multi-label với sigmoid output
+    criterion = FocalLoss(alpha=1, gamma=2)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     best_val_f1 = 0.0
+    best_thresholds = [0.5] * NUM_CLASSES  # Khởi tạo threshold mặc định
 
     for epoch in range(1, NUM_EPOCHS + 1):
         model.train()
@@ -90,21 +121,28 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
                 loss = criterion(outputs, targets)
                 val_loss += loss.item()
 
-                all_preds.append(outputs.cpu())
+                preds = torch.sigmoid(outputs)  # sigmoid trước khi threshold
+                all_preds.append(preds.cpu())
                 all_targets.append(targets.cpu())
 
         avg_val_loss = val_loss / len(val_loader)
         all_preds = torch.cat(all_preds).numpy()
         all_targets = torch.cat(all_targets).numpy()
 
-        # Dùng threshold 0.5 để đánh giá F1 score đa nhãn
-        preds_binary = (all_preds > 0.5).astype(int)
+        # Tìm threshold tối ưu trên val set
+        best_thresholds = find_best_thresholds(all_targets, all_preds)
+
+        # Áp threshold riêng cho từng class để ra nhãn dự đoán cuối cùng
+        preds_binary = np.zeros_like(all_preds, dtype=int)
+        for i in range(NUM_CLASSES):
+            preds_binary[:, i] = (all_preds[:, i] > best_thresholds[i]).astype(int)
+
         val_f1 = f1_score(all_targets, preds_binary, average='weighted')
 
         print(f"[Fold {fold}][Epoch {epoch}/{NUM_EPOCHS}] "
               f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val F1: {val_f1:.4f}")
+        print(f" Thresholds: {np.round(best_thresholds, 3)}")
 
-        # Lưu model tốt nhất
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             save_path = os.path.join(MODEL_DIR, f"resnet50_fold{fold}_best.pth")
