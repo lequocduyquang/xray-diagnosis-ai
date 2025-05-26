@@ -13,16 +13,22 @@ from resnet50_model import ResNet50
 
 # ==== FOCAL LOSS DEFINITION ====
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+    def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super(FocalLoss, self).__init__()
-        self.alpha = alpha
+        self.alpha = alpha  # Tensor kích thước (num_classes,) hoặc None
         self.gamma = gamma
         self.reduction = reduction
 
     def forward(self, inputs, targets):
         BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-        pt = torch.exp(-BCE_loss)
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+        pt = torch.exp(-BCE_loss)  # pt = sigmoid(logits) nếu target đúng
+
+        # Apply class weights nếu có
+        if self.alpha is not None:
+            alpha = self.alpha.view(1, -1)  # reshape để broadcast đúng với batch
+            BCE_loss = alpha * BCE_loss
+
+        focal_loss = (1 - pt) ** self.gamma * BCE_loss
 
         if self.reduction == 'mean':
             return focal_loss.mean()
@@ -30,6 +36,7 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         else:
             return focal_loss
+
 
 # ==== Cấu hình ====
 DATA_DIR = "/content/drive/MyDrive/chest_xray_kid_multi_labels_jpeg/train"
@@ -40,7 +47,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 BATCH_SIZE = 16
 NUM_EPOCHS = 20
-NUM_CLASSES = 6
+NUM_CLASSES = 5
 LEARNING_RATE = 1e-4
 N_SPLITS = 3
 SEED = 42
@@ -52,6 +59,13 @@ np.random.seed(SEED)
 df = pd.read_csv(CSV_PATH)
 label_cols = df.columns[1:].tolist()
 labels = df[label_cols].values.astype(np.float32)
+
+# ==== Tính class weights ==== 
+label_sums = df[label_cols].sum(axis=0).values  # Tổng số ảnh dương cho mỗi class
+label_counts = df.shape[0]
+class_weights = label_counts / (len(label_cols) * label_sums)  # Công thức: N / (C * n_i)
+class_weights = torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
+
 
 # ==== Hàm tìm threshold tối ưu cho từng class ====
 def find_best_thresholds(y_true, y_probs):
@@ -85,7 +99,7 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
     model = ResNet50(num_classes=NUM_CLASSES, use_pretrained=True, freeze_base=False, dropout_rate=0.3)
     model = model.to(DEVICE)
 
-    criterion = FocalLoss(alpha=1, gamma=2)
+    criterion = FocalLoss(alpha=class_weights, gamma=2)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     best_val_f1 = 0.0
