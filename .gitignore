@@ -25,6 +25,7 @@ __pycache__/
 backend/downloads
 backend/image_labels_train.csv
 backend/filtered_image_labels_train.csv
+backend/filtered_image_labels_test.csv
 backend/NORMAL
 backend/NORMAL_V2
 backend/PNEUMONIA
