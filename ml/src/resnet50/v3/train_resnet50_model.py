@@ -15,21 +15,17 @@ from resnet50_model import ResNet50
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super(FocalLoss, self).__init__()
-        self.alpha = alpha  # Tensor kích thước (num_classes,) hoặc None
+        self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
 
     def forward(self, inputs, targets):
         BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-        pt = torch.exp(-BCE_loss)  # pt = sigmoid(logits) nếu target đúng
-
-        # Apply class weights nếu có
+        pt = torch.exp(-BCE_loss)
         if self.alpha is not None:
-            alpha = self.alpha.view(1, -1)  # reshape để broadcast đúng với batch
+            alpha = self.alpha.view(1, -1)
             BCE_loss = alpha * BCE_loss
-
         focal_loss = (1 - pt) ** self.gamma * BCE_loss
-
         if self.reduction == 'mean':
             return focal_loss.mean()
         elif self.reduction == 'sum':
@@ -37,12 +33,14 @@ class FocalLoss(nn.Module):
         else:
             return focal_loss
 
-
-# ==== Cấu hình ====
+# ==== CONFIG ====
 DATA_DIR = "/content/drive/MyDrive/chest_xray_kid_multi_labels_jpeg/train"
 CSV_PATH = "/content/drive/MyDrive/chest_xray_kid_multi_labels_jpeg/filtered_image_labels_train.csv"
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 os.makedirs(MODEL_DIR, exist_ok=True)
+
+# === Load pretrained model nếu có ===
+PRETRAINED_MODEL_PATH = "/content/drive/MyDrive/xray-diagnosis-ai/resnet50/v2/models/resnet50_model_v2_kid.pth"
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 BATCH_SIZE = 16
@@ -61,13 +59,12 @@ label_cols = df.columns[1:].tolist()
 labels = df[label_cols].values.astype(np.float32)
 
 # ==== Tính class weights ==== 
-label_sums = df[label_cols].sum(axis=0).values  # Tổng số ảnh dương cho mỗi class
+label_sums = df[label_cols].sum(axis=0).values
 label_counts = df.shape[0]
-class_weights = label_counts / (len(label_cols) * label_sums)  # Công thức: N / (C * n_i)
+class_weights = label_counts / (len(label_cols) * label_sums)
 class_weights = torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
 
-
-# ==== Hàm tìm threshold tối ưu cho từng class ====
+# ==== Hàm tìm threshold tối ưu ====
 def find_best_thresholds(y_true, y_probs):
     thresholds = np.arange(0.1, 0.9, 0.01)
     best_thresholds = []
@@ -80,10 +77,9 @@ def find_best_thresholds(y_true, y_probs):
         best_thresholds.append(best_t)
     return best_thresholds
 
-# ==== Khởi tạo MultilabelStratifiedKFold ====
+# ==== Training với K-Fold ====
 mskf = MultilabelStratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=SEED)
 
-# ==== Training loop với K-Fold ====
 for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), labels), 1):
     print(f"\n===== Fold {fold}/{N_SPLITS} =====")
 
@@ -97,13 +93,20 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
     model = ResNet50(num_classes=NUM_CLASSES, use_pretrained=True, freeze_base=False, dropout_rate=0.3)
+
+    # === Load pretrained weights nếu có ===
+    if PRETRAINED_MODEL_PATH and os.path.isfile(PRETRAINED_MODEL_PATH):
+        state_dict = torch.load(PRETRAINED_MODEL_PATH, map_location=DEVICE)
+        model.load_state_dict(state_dict, strict=False)
+        print(f"🔁 Loaded pretrained weights from {PRETRAINED_MODEL_PATH}")
+
     model = model.to(DEVICE)
 
     criterion = FocalLoss(alpha=class_weights, gamma=2)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     best_val_f1 = 0.0
-    best_thresholds = [0.5] * NUM_CLASSES  # Khởi tạo threshold mặc định
+    best_thresholds = [0.5] * NUM_CLASSES
 
     for epoch in range(1, NUM_EPOCHS + 1):
         model.train()
@@ -111,18 +114,16 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
 
         for inputs, targets in train_loader:
             inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-
             train_loss += loss.item()
 
         avg_train_loss = train_loss / len(train_loader)
 
-        # Validation
+        # === Validation ===
         model.eval()
         val_loss = 0.0
         all_preds = []
@@ -134,8 +135,7 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 val_loss += loss.item()
-
-                preds = torch.sigmoid(outputs)  # sigmoid trước khi threshold
+                preds = torch.sigmoid(outputs)
                 all_preds.append(preds.cpu())
                 all_targets.append(targets.cpu())
 
@@ -143,10 +143,8 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
         all_preds = torch.cat(all_preds).numpy()
         all_targets = torch.cat(all_targets).numpy()
 
-        # Tìm threshold tối ưu trên val set
         best_thresholds = find_best_thresholds(all_targets, all_preds)
 
-        # Áp threshold riêng cho từng class để ra nhãn dự đoán cuối cùng
         preds_binary = np.zeros_like(all_preds, dtype=int)
         for i in range(NUM_CLASSES):
             preds_binary[:, i] = (all_preds[:, i] > best_thresholds[i]).astype(int)
@@ -161,6 +159,7 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
             best_val_f1 = val_f1
             save_path = os.path.join(MODEL_DIR, f"resnet50_fold{fold}_best.pth")
             torch.save(model.state_dict(), save_path)
+            torch.save(model.state_dict(), os.path.join(MODEL_DIR, "resnet50_finetuned.pth"))
             print(f"✅ Saved best model fold {fold} at epoch {epoch} with Val F1: {val_f1:.4f}")
 
 print("🏁 Training complete.")
