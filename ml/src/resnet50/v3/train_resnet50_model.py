@@ -97,8 +97,15 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
     # === Load pretrained weights nếu có ===
     if PRETRAINED_MODEL_PATH and os.path.isfile(PRETRAINED_MODEL_PATH):
         state_dict = torch.load(PRETRAINED_MODEL_PATH, map_location=DEVICE)
-        model.load_state_dict(state_dict, strict=False)
-        print(f"🔁 Loaded pretrained weights from {PRETRAINED_MODEL_PATH}")
+        # Load chỉ phần base_model (trừ fc layers)
+        pretrained_dict = torch.load(PRETRAINED_MODEL_PATH, map_location=DEVICE)
+        model_dict = model.state_dict()
+
+        # Chỉ lấy các key khớp và không phải fc layer
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and 'fc' not in k}
+        model_dict.update(pretrained_dict)
+        model.load_state_dict(model_dict)
+        print(f"🔁 Loaded base weights (except FC layers) from {PRETRAINED_MODEL_PATH}")
 
     model = model.to(DEVICE)
 
