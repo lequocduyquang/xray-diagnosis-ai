@@ -17,3 +17,7 @@ export function softmax(logits) {
 export function getPredictedClass(probabilities) {
   return probabilities.indexOf(Math.max(...probabilities));
 }
+
+export function sigmoid(x) {
+  return x.map(v => 1 / (1 + Math.exp(-v)));
+}

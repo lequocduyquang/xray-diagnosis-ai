@@ -83,28 +83,3 @@ export async function dicomToPng(dicomFilePath) {
     throw err;
   }
 }
-
-/**
- * Chuyển đổi dữ liệu pixel 16-bit sang 8-bit và chuẩn hóa lại
- * @param {Uint16Array} pixelArray - Mảng dữ liệu pixel
- * @param {number} width - Chiều rộng của ảnh
- * @param {number} height - Chiều cao của ảnh
- * @returns {Buffer} - Buffer ảnh chuẩn hóa
- */
-function normalizePixels(pixelArray, width, height) {
-  const normalized = new Uint8Array(width * height);
-
-  // Giả sử phạm vi giá trị pixel là 0-65535 (16-bit), chuẩn hóa về 0-255 (8-bit)
-  const maxPixelValue = 65535;
-  const minPixelValue = 0;
-
-  for (let i = 0; i < pixelArray.length; i++) {
-    // Tính toán pixel chuẩn hóa
-    const normalizedValue = Math.round(
-      ((pixelArray[i] - minPixelValue) / (maxPixelValue - minPixelValue)) * 255
-    );
-    normalized[i] = normalizedValue;
-  }
-
-  return normalized;
-}

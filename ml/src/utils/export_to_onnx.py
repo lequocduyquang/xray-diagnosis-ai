@@ -4,26 +4,32 @@ import torch.onnx
 import argparse
 import os
 
+NUM_CLASSES = 5
+
 def load_model(model_name: str, num_classes: int):
-    if model_name == "resnet50":
+    if model_name == "densenet121":
+        model = models.densenet121(weights=None)
+        num_ftrs = model.classifier.in_features
+        model.classifier = torch.nn.Sequential(
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(num_ftrs, num_classes)
+        )
+    elif model_name == "resnet50":
         model = models.resnet50(weights=None)
         model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
-    elif model_name == "densenet121":
-        model = models.densenet121(weights=None)
-        model.classifier = torch.nn.Linear(model.classifier.in_features, num_classes)
     else:
         raise ValueError("Unsupported model name")
 
     return model
 
 def export_onnx(model_path, model_name, num_classes, output_path):
-    print(f"Loading model from {model_path}...")
+    print(f"📦 Loading model from {model_path}...")
     model = load_model(model_name, num_classes)
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
     dummy_input = torch.randn(1, 3, 224, 224)
-    print(f"Exporting {model_name} to {output_path}...")
+    print(f"🚀 Exporting {model_name} to {output_path}...")
 
     torch.onnx.export(
         model,
@@ -37,7 +43,7 @@ def export_onnx(model_path, model_name, num_classes, output_path):
         dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
     )
 
-    print("Export complete!")
+    print("✅ Export complete!")
 
 
 if __name__ == "__main__":
