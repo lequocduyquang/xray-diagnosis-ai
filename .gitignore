@@ -30,4 +30,5 @@ backend/NORMAL
 backend/NORMAL_V2
 backend/PNEUMONIA
 backend/mock
+backend/data
 backend/scripts
