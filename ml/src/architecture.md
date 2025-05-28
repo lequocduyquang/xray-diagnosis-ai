@@ -1,17 +1,21 @@
-        +--------------------+
-        |   Input X-ray      |
-        +---------+----------+
-                  |
-        +---------+----------+
-        |     Parallel Run    |
-        |                     |
-  +-----▼-----+      +--------▼---------+
-  | ResNet50  |      | ResNet18 + EffNet|
-  | (Normal/  |      |  (Rare + Common) |
-  | Pneumonia)|      |     Labels       |
-  +-----------+      +------------------+
-          \                  /
-           \                /
-        +---▼--------------▼---+
-        |  Fusion / Decision   |
-        +----------------------+
+[Ảnh X-quang upload lên]
+          |
+          v
++------------------------+
+| Run song song:         |
+|  - ResNet50 v1 (adult) |
+|  - ResNet50 v2 (child) |
++------------------------+
+          |
+          v
+[Ensemble hoặc chọn nhãn nếu cả 2 đồng thuận]
+          |
+          +--> Nếu NORMAL => Return luôn
+          |
+          +--> Nếu PNEUMONIA =>
+                       |
+                       v
+           Run DenseNet121 (5-label)
+                       |
+                       v
+     Return multi-label result (top-n scores)
