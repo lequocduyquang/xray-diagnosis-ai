@@ -9,8 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import models
 
-from resnet50_dataset import XRayDataset  # giữ nguyên dataset nhé
-
+from densenet121_dataset import XRayDataset
 # ==== FOCAL LOSS DEFINITION ====
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
