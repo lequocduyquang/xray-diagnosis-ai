@@ -25,7 +25,16 @@ def load_model(model_name: str, num_classes: int):
 def export_onnx(model_path, model_name, num_classes, output_path):
     print(f"📦 Loading model from {model_path}...")
     model = load_model(model_name, num_classes)
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    state_dict = torch.load(model_path, map_location="cpu")
+
+    # Xử lý nếu state_dict có tiền tố "base_model."
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("base_model."):
+            new_state_dict[k.replace("base_model.", "")] = v
+        else:
+            new_state_dict[k] = v
+    model.load_state_dict(new_state_dict, strict=False)
     model.eval()
 
     dummy_input = torch.randn(1, 3, 224, 224)
@@ -40,9 +49,7 @@ def export_onnx(model_path, model_name, num_classes, output_path):
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
-        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
     )
-
     print("✅ Export complete!")
 
 
