@@ -32,3 +32,6 @@ backend/PNEUMONIA
 backend/mock
 backend/data
 backend/scripts
+
+# Grad-CAM models
+gradcam/models
