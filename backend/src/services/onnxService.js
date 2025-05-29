@@ -10,7 +10,13 @@ const __dirname = path.dirname(__filename);
 
 // Các label binary và multi-label
 const binaryClassLabels = ["Normal", "Pneumonia"];
-const multiLabelNames = ["Atelectasis", "Effusion", "Infiltration", "Cardiomegaly", "Nodule"];
+const multiLabelNames = [
+  "Bronchitis",
+  "Brocho-pneumonia",
+  "Other disease",
+  "Bronchiolitis",
+  "Pneumonia",
+];
 
 /**
  * Phân tích ảnh X-quang bằng 3 model ONNX: ResNet50-v1, ResNet50-v2, DenseNet121
@@ -24,7 +30,9 @@ export async function analyzeXrayImage(filePathOrUrl) {
     if (filePathOrUrl.startsWith("http")) {
       const response = await fetch(filePathOrUrl);
       if (!response.ok) {
-        throw new Error(`Failed to fetch file from URL: ${response.statusText}`);
+        throw new Error(
+          `Failed to fetch file from URL: ${response.statusText}`
+        );
       }
       const arrayBuffer = await response.arrayBuffer();
       fileBuffer = Buffer.from(arrayBuffer);
@@ -36,8 +44,8 @@ export async function analyzeXrayImage(filePathOrUrl) {
 
     // Đường dẫn tới model
     const modelPaths = {
-      resnetV1: path.join(__dirname, "../ml-models/resnet50-v1.onnx"),
-      resnetV2: path.join(__dirname, "../ml-models/resnet50-v2.onnx"),
+      resnetV1: path.join(__dirname, "../ml-models/resnet50_v1.onnx"),
+      resnetV2: path.join(__dirname, "../ml-models/resnet50_v2.onnx"),
       densenet: path.join(__dirname, "../ml-models/densenet121.onnx"),
     };
 
@@ -71,7 +79,10 @@ export async function analyzeXrayImage(filePathOrUrl) {
     }
 
     // Nếu là Pneumonia thì chạy thêm DenseNet để phân tích chuyên sâu
-    const multiLabelProbs = await runMultiLabelClassifier(modelPaths.densenet, inputTensor);
+    const multiLabelProbs = await runMultiLabelClassifier(
+      modelPaths.densenet,
+      inputTensor
+    );
 
     // Trả top-n nhãn (ví dụ top 3)
     const topN = 3;
@@ -131,7 +142,10 @@ async function preprocessImage(imageBuffer) {
   const image = await Jimp.read(imageBuffer);
   const targetWidth = 224;
   const targetHeight = 224;
-  image.resize(targetWidth, targetHeight);
+  image.resize({
+    w: targetWidth,
+    h: targetHeight,
+  });
   const pixels = image.bitmap.data;
 
   const mean = [0.485, 0.456, 0.406];
@@ -151,5 +165,10 @@ async function preprocessImage(imageBuffer) {
     }
   }
 
-  return new ort.Tensor("float32", tensorData, [1, 3, targetHeight, targetWidth]);
+  return new ort.Tensor("float32", tensorData, [
+    1,
+    3,
+    targetHeight,
+    targetWidth,
+  ]);
 }

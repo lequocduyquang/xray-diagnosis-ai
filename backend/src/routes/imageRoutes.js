@@ -44,7 +44,7 @@ const handleDicomFile = async (req, res, next) => {
   console.log(`Đang kiểm tra file: ${filePath}`);
   console.log(`Phần mở rộng file: ${fileExtension}`);
 
-  if (fileExtension === ".dcm") {
+  if (fileExtension === ".dcm" || fileExtension === ".dicom") {
     try {
       console.log("Đang xử lý file DICOM...");
       // Chuyển đổi DICOM sang PNG

@@ -34,6 +34,13 @@ export async function dicomToPng(dicomFilePath) {
       throw new Error("Chỉ hỗ trợ ảnh DICOM 8-bit hoặc 16-bit!");
     }
 
+    const start = pixelDataElement.dataOffset;
+    const end = start + pixelDataElement.length;
+    if (end > dicomBuffer.length) {
+      throw new Error("Pixel data out of buffer range!");
+    }
+    // const pixelData = dicomBuffer.slice(start, end);
+
     // Tạo mảng pixel từ dữ liệu DICOM
     const pixelData = new Uint8Array(
       dicomBuffer.buffer,
@@ -44,8 +51,15 @@ export async function dicomToPng(dicomFilePath) {
     // Chuẩn hóa pixel về 8-bit nếu cần
     const normalizedPixels = new Uint8Array(width * height);
     if (bitsAllocated === 16) {
-      const pixelArray = new Uint16Array(pixelData.buffer);
-      const maxPixelValue = Math.max(...pixelArray);
+      const pixelArray = new Uint16Array(
+        pixelData.buffer,
+        pixelData.byteOffset,
+        pixelData.byteLength / 2
+      );
+      let maxPixelValue = 0;
+      for (let i = 0; i < pixelArray.length; i++) {
+        if (pixelArray[i] > maxPixelValue) maxPixelValue = pixelArray[i];
+      }
       for (let i = 0; i < pixelArray.length; i++) {
         normalizedPixels[i] = Math.round((pixelArray[i] / maxPixelValue) * 255);
       }
@@ -67,7 +81,15 @@ export async function dicomToPng(dicomFilePath) {
     }
 
     // Lưu file PNG tạm thời
-    const pngFilePath = dicomFilePath.replace(".dcm", ".png");
+    // Lưu file PNG tạm thời
+    let pngFilePath;
+    if (dicomFilePath.endsWith(".dcm")) {
+      pngFilePath = dicomFilePath.replace(/\.dcm$/i, ".png");
+    } else if (dicomFilePath.endsWith(".dicom")) {
+      pngFilePath = dicomFilePath.replace(/\.dicom$/i, ".png");
+    } else {
+      pngFilePath = dicomFilePath + ".png";
+    }
     await new Promise((resolve, reject) => {
       png
         .pack()
