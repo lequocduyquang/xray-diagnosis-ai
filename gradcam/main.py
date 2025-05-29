@@ -15,7 +15,7 @@ async def gradcam_endpoint(
 ):
     try:
         # Lưu ảnh tạm
-        temp_filename = f"temp_{uuid.uuid4().hex}.png"
+        temp_filename = f"temp_{uuid.uuid4().hex}.jpeg"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
 

@@ -43,58 +43,80 @@ def get_model(model_name):
     model.eval()
     return model
 
-
-def generate_gradcam_and_upload(image_path, model_name):
+def generate_gradcam(image_path, model_name):
+    """
+    Generate Grad-CAM heatmap for the given image and model.
+    """
     model = get_model(model_name)
     target_layer = model.layer4[-1] if "resnet" in model_name else model.features[-1]
 
+    # Load and preprocess the image
     image = Image.open(image_path).convert("RGB")
     input_tensor = transform(image).unsqueeze(0)
 
     gradients = []
     activations = []
 
+    # Define hooks
     def backward_hook(module, grad_input, grad_output):
         gradients.append(grad_output[0])
 
     def forward_hook(module, input, output):
         activations.append(output)
 
+    # Register hooks
     target_layer.register_forward_hook(forward_hook)
     target_layer.register_backward_hook(backward_hook)
 
+    # Forward pass
     output = model(input_tensor)
     class_idx = output.argmax(dim=1).item()
 
+    # Backward pass
     model.zero_grad()
     class_score = output[0, class_idx]
     class_score.backward()
 
+    # Extract gradients and activations
     grads = gradients[0]
     acts = activations[0]
 
+    # Compute pooled gradients
     pooled_grads = torch.mean(grads, dim=[0, 2, 3])
     for i in range(acts.shape[1]):
         acts[:, i, :, :] *= pooled_grads[i]
 
+    # Generate heatmap
     heatmap = torch.mean(acts, dim=1).squeeze()
     heatmap = F.relu(heatmap)
     heatmap /= torch.max(heatmap)
     heatmap = heatmap.detach().numpy()
 
-    # Overlay heatmap
+    # Overlay heatmap on the original image
     img = cv2.imread(image_path)
     heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
     heatmap = np.uint8(255 * heatmap)
     heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
     superimposed_img = cv2.addWeighted(img, 0.6, heatmap_color, 0.4, 0)
 
-    # Save result
-    result_path = f"gradcam_{uuid.uuid4().hex}.jpg"
+    # Save the result locally
+    result_path = f"gradcam_{uuid.uuid4().hex}.jpeg"
     cv2.imwrite(result_path, superimposed_img)
 
-    # Upload to Cloudinary
-    upload_result = cloudinary.uploader.upload(result_path)
-    os.remove(result_path)
+    return result_path
 
+def upload_to_cloudinary(file_path):
+    """
+    Upload the given file to Cloudinary and return the secure URL.
+    """
+    upload_result = cloudinary.uploader.upload(file_path)
+    os.remove(file_path)  # Remove the local file after upload
     return upload_result["secure_url"]
+
+
+def generate_gradcam_and_upload(image_path, model_name):
+    """
+    Generate Grad-CAM heatmap and upload the result to Cloudinary.
+    """
+    result_path = generate_gradcam(image_path, model_name)
+    return upload_to_cloudinary(result_path)
