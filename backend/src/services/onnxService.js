@@ -78,18 +78,24 @@ export async function analyzeXrayImage(filePathOrUrl) {
       };
     }
 
-    // Nếu là Pneumonia thì chạy thêm DenseNet để phân tích chuyên sâu
+    // Multi-label
     const multiLabelProbs = await runMultiLabelClassifier(
       modelPaths.densenet,
       inputTensor
     );
 
-    // Trả top-n nhãn (ví dụ top 3)
-    const topN = 3;
-    const topLabels = multiLabelProbs
-      .map((prob, i) => ({ label: multiLabelNames[i], score: prob }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topN);
+    // Lấy top 3 label lớn nhất
+    const allMultiLabelScores = multiLabelNames.map((label, idx) => ({
+      label,
+      score: multiLabelProbs[idx],
+    }));
+    const sorted = allMultiLabelScores
+      .slice()
+      .sort((a, b) => b.score - a.score);
+    const multiLabelTop = {};
+    for (let i = 0; i < 3; i++) {
+      multiLabelTop[i] = sorted[i] || null;
+    }
 
     return {
       success: true,
@@ -99,7 +105,7 @@ export async function analyzeXrayImage(filePathOrUrl) {
         binaryProbabilities: avgProbs,
         predictedClass: finalLabel,
         classLabels: binaryClassLabels,
-        multiLabelTop: topLabels,
+        multiLabelTop,
         allMultiLabelScores: multiLabelNames.map((label, idx) => ({
           label,
           score: multiLabelProbs[idx],
