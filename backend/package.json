@@ -4,6 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "preinstall": "npm install onnxruntime-node --onnxruntime-node-install=skip || true",
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest"
