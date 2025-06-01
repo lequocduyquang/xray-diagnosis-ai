@@ -22,8 +22,17 @@ export async function analyzeXray(req, res) {
       return res.status(400).json({ error: "Không tìm thấy file ảnh!" });
     }
 
-    // Lấy thông tin lâm sàng từ body
-    const clinical_info = req.body.clinical_info || {};
+    // Parse clinical_info từ body
+    let clinical_info = {};
+    if (req.body.clinical_info) {
+      try {
+        clinical_info = JSON.parse(req.body.clinical_info);
+      } catch (err) {
+        return res
+          .status(400)
+          .json({ error: "clinical_info phải là JSON hợp lệ!" });
+      }
+    }
 
     // Kiểm tra tính hợp lệ của initial_diagnosis (nếu có)
     if (

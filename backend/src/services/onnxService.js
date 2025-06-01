@@ -19,32 +19,32 @@ const multiLabelNames = [
 ];
 
 /**
- * Điều chỉnh xác suất dựa trên thông tin lâm sàng
- * @param {Object} probs Xác suất từ AI
+ * Điều chỉnh xác suất dựa trên thông tin lâm sàng, chỉ cho binary labels
+ * @param {Object} probs Xác suất từ AI (Normal, Pneumonia)
  * @param {Object} clinical_info Thông tin lâm sàng
- * @param {number} threshold Ngưỡng mâu thuẫn
+ * @param {string} predictedClass Nhãn dự đoán của AI
+ * @param {number} highThreshold Ngưỡng cho xác suất cao của nhãn khác
  * @returns {Object} Xác suất điều chỉnh và cảnh báo
  */
-function adjust_probabilities(probs, clinical_info, threshold = 0.4) {
+function adjust_probabilities(
+  probs,
+  clinical_info,
+  predictedClass,
+  highThreshold = 0.49
+) {
   const weights = {};
-  for (const label of [...binaryClassLabels, ...multiLabelNames]) {
+  for (const label of binaryClassLabels) {
     weights[label] = 1.0;
   }
 
-  // Áp dụng trọng số dựa trên chẩn đoán lâm sàng
+  // Áp dụng trọng số nhẹ dựa trên chẩn đoán lâm sàng, chỉ cho binary labels
   const initial_diagnosis = clinical_info?.initial_diagnosis || "";
   if (initial_diagnosis === "Normal") {
-    weights["Normal"] = 1.5;
-    weights["Pneumonia"] = 0.5;
-    multiLabelNames.forEach((label) => (weights[label] = 0.5));
-  } else if (initial_diagnosis && weights[initial_diagnosis]) {
-    weights[initial_diagnosis] = 1.5;
-    weights["Normal"] = 0.5;
-    for (const label of [...binaryClassLabels, ...multiLabelNames]) {
-      if (label !== initial_diagnosis && label !== "Normal") {
-        weights[label] = 0.8;
-      }
-    }
+    weights["Normal"] = 1.2;
+    weights["Pneumonia"] = 0.8;
+  } else if (initial_diagnosis === "Pneumonia") {
+    weights["Pneumonia"] = 1.2;
+    weights["Normal"] = 0.8;
   }
 
   // Điều chỉnh xác suất
@@ -58,37 +58,37 @@ function adjust_probabilities(probs, clinical_info, threshold = 0.4) {
     final_probs[label] /= total;
   }
 
-  // Tính độ mâu thuẫn
-  const conflicts = {};
-  for (const label in final_probs) {
-    const clinical_value = label === initial_diagnosis ? 1.0 : 0.0;
-    conflicts[label] = Math.abs(final_probs[label] - clinical_value);
-  }
+  // Log debug để kiểm tra ảnh hưởng trọng số
+  console.log(`Original probs: ${JSON.stringify(probs)}`);
+  console.log(`Weights: ${JSON.stringify(weights)}`);
+  console.log(`Final probs: ${JSON.stringify(final_probs)}`);
 
-  // Tạo cảnh báo nếu mâu thuẫn lớn
+  // Tính độ mâu thuẫn và tạo cảnh báo (chỉ khi có initial_diagnosis và là binary label)
   const warnings = [];
-  for (const label in conflicts) {
-    if (conflicts[label] > threshold && label === initial_diagnosis) {
-      warnings.push(
-        `Cảnh báo: AI cho xác suất ${label} thấp (${(
-          final_probs[label] * 100
-        ).toFixed(
-          1
-        )}%), nhưng bác sĩ chẩn đoán ${label}. Đề nghị xét nghiệm bổ sung (máu, CRP, CT) hoặc theo dõi sát.`
-      );
-    } else if (
-      conflicts[label] > threshold &&
-      label !== initial_diagnosis &&
-      final_probs[label] > threshold
-    ) {
-      warnings.push(
-        `Cảnh báo: AI phát hiện ${label} với xác suất cao (${(
-          final_probs[label] * 100
-        ).toFixed(
-          1
-        )}%), nhưng bác sĩ chẩn đoán ${initial_diagnosis}. Đề nghị kiểm tra lại ảnh X-quang hoặc theo dõi thêm.`
-      );
+  if (initial_diagnosis && binaryClassLabels.includes(initial_diagnosis)) {
+    const conflicts = {};
+    for (const label of binaryClassLabels) {
+      const clinical_value = label === initial_diagnosis ? 1.0 : 0.0;
+      conflicts[label] = Math.abs(final_probs[label] - clinical_value);
+      console.log(
+        `Conflict for ${label}: ${conflicts[label]}, Prob: ${final_probs[label]}, Clinical: ${clinical_value}`
+      ); // Debug
     }
+
+    // Tạo cảnh báo nếu initial_diagnosis khác predictedClass và nhãn khác có xác suất đủ cao
+    if (initial_diagnosis !== predictedClass) {
+      if (final_probs[predictedClass] > highThreshold) {
+        warnings.push(
+          `Cảnh báo: AI phát hiện ${predictedClass} với xác suất cao (${(
+            final_probs[predictedClass] * 100
+          ).toFixed(
+            1
+          )}%), nhưng bác sĩ chẩn đoán ${initial_diagnosis}. Đề nghị kiểm tra lại ảnh X-quang hoặc xét nghiệm bổ sung (máu, CRP, CT).`
+        );
+      }
+    }
+
+    console.log(`Warnings generated: ${JSON.stringify(warnings)}`); // Debug
   }
 
   return { final_probs, warnings };
@@ -127,26 +127,38 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
     };
 
     // Chạy song song ResNet50 V1 và V2
-    const [_child, child] = await Promise.all([
+    const [adult, child] = await Promise.all([
       runBinaryClassifier(modelPaths.resnetV1, inputTensor),
       runBinaryClassifier(modelPaths.resnetV2, inputTensor),
     ]);
 
     // Weighted Ensemble
-    const w1 = 0.5; // ResNet50-v1
-    const w2 = 0.5; // ResNet50-v2
+    const w1 = 0.4; // ResNet50-v1
+    const w2 = 0.6; // ResNet50-v2
     const avgProbs = {
-      Normal: _child.probabilities[0] * w1 + child.probabilities[0] * w2,
-      Pneumonia: _child.probabilities[1] * w1 + child.probabilities[1] * w2,
+      Normal: adult.probabilities[0] * w1 + child.probabilities[0] * w2,
+      Pneumonia: adult.probabilities[1] * w1 + child.probabilities[1] * w2,
     };
 
     // Điều chỉnh xác suất binary dựa trên lâm sàng
     const { final_probs: finalBinaryProbs, warnings: binaryWarnings } =
-      adjust_probabilities(avgProbs, clinical_info);
+      adjust_probabilities(
+        avgProbs,
+        clinical_info,
+        binaryClassLabels[
+          Object.values(avgProbs).indexOf(Math.max(...Object.values(avgProbs)))
+        ]
+      );
     const predictedIdx = Object.values(finalBinaryProbs).indexOf(
       Math.max(...Object.values(finalBinaryProbs))
     );
     const finalLabel = binaryClassLabels[predictedIdx];
+
+    console.log(
+      `Binary probs: ${JSON.stringify(
+        finalBinaryProbs
+      )}, Predicted: ${finalLabel}`
+    ); // Debug
 
     if (finalLabel === "Normal") {
       return {
@@ -163,7 +175,7 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
       };
     }
 
-    // Multi-label
+    // Multi-label (không điều chỉnh xác suất dựa trên clinical_info)
     const multiLabelProbs = await runMultiLabelClassifier(
       modelPaths.densenet,
       inputTensor
@@ -173,14 +185,10 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
       (label, idx) => (multiLabelProbsObj[label] = multiLabelProbs[idx])
     );
 
-    // Điều chỉnh xác suất multi-label dựa trên lâm sàng
-    const { final_probs: finalMultiLabelProbs, warnings: multiLabelWarnings } =
-      adjust_probabilities(multiLabelProbsObj, clinical_info);
-
     // Lấy top 3 label lớn nhất
     const allMultiLabelScores = multiLabelNames.map((label) => ({
       label,
-      score: finalMultiLabelProbs[label],
+      score: multiLabelProbsObj[label],
     }));
     const sorted = allMultiLabelScores
       .slice()
@@ -201,7 +209,7 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
         classLabels: binaryClassLabels,
         multiLabelTop,
         allMultiLabelScores,
-        warnings: [...binaryWarnings, ...multiLabelWarnings],
+        warnings: binaryWarnings,
       },
     };
   } catch (error) {

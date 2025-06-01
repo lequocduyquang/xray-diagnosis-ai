@@ -58,15 +58,15 @@ Hệ thống hoạt động theo quy trình sau:
      - **Triệu chứng** (`symptoms`): Sốt, khó thở, ho, thở khò khè.
 2. **Phân tích nhị phân**:
    - Hai mô hình ResNet50 (v1 và v2) chạy song song để phân loại Normal hoặc Pneumonia.
-   - Kết quả được kết hợp bằng trọng số (0.5 cho v1, 0.5 cho v2).
+   - Kết quả được kết hợp bằng trọng số (0.4 cho v1, 0.6 cho v2).
    - Xác suất được điều chỉnh dựa trên thông tin lâm sàng (ví dụ: tăng xác suất Pneumonia nếu bác sĩ chọn Pneumonia).
 3. **Phân loại đa nhãn** (nếu phát hiện Pneumonia):
    - Mô hình DenseNet121 phân loại 5 bệnh lý: Bronchitis, Brocho-pneumonia, Other disease, Bronchiolitis, Pneumonia.
    - Xác suất được điều chỉnh dựa trên thông tin lâm sàng.
 4. **Xử lý mâu thuẫn**:
    - Nếu chẩn đoán AI và bác sĩ mâu thuẫn (ví dụ: bác sĩ chọn Pneumonia, AI chọn Normal), hệ thống:
-     - Điều chỉnh xác suất bằng trọng số (`W_clinical`): 1.5 cho chẩn đoán của bác sĩ, 0.5 cho nhãn mâu thuẫn, 0.8 cho nhãn khác.
-     - Đưa ra cảnh báo nếu độ mâu thuẫn > 0.4.
+     - Điều chỉnh xác suất bằng trọng số (`W_clinical`): 1.2 cho chẩn đoán của bác sĩ, 0.8 cho chẩn đoán của AI.
+     - Đưa ra cảnh báo nếu độ mâu thuẫn > 0.49.
 5. **Kết quả**:
    - Hiển thị: Xác suất nhị phân, top 3 chẩn đoán phụ, tất cả chẩn đoán phụ, thông tin lâm sàng, và cảnh báo mâu thuẫn.
 
@@ -148,8 +148,8 @@ Hệ thống hoạt động theo quy trình sau:
   - `initial_diagnosis`: Chọn từ danh sách nhãn hợp lệ.
   - `symptoms`: Chọn từ danh sách (sốt, khó thở, ho, thở khò khè).
 - **Xử lý**:
-  - Điều chỉnh xác suất bằng trọng số: 1.5 cho nhãn bác sĩ chọn, 0.5 cho nhãn mâu thuẫn, 0.8 cho nhãn khác.
-  - Cảnh báo nếu mâu thuẫn lớn (độ mâu thuẫn > 0.4).
+  - Điều chỉnh xác suất bằng trọng số: 1.2 cho nhãn bác sĩ chọn, 0.8 cho AI.
+  - Cảnh báo nếu mâu thuẫn lớn (độ mâu thuẫn > 0.49).
 - **Output**: Kết quả bao gồm xác suất điều chỉnh, thông tin lâm sàng, và khuyến nghị.
 
 ---
@@ -202,7 +202,7 @@ Hệ thống hoạt động theo quy trình sau:
 
 ## 📈 Kết quả Inference
 
-- **Nhị phân**: Xác suất Normal/Pneumonia sau khi kết hợp ResNet50 v1 (30%) và v2 (70%), điều chỉnh bởi thông tin lâm sàng.
+- **Nhị phân**: Xác suất Normal/Pneumonia sau khi kết hợp ResNet50 v1 (40%) và v2 (60%), điều chỉnh bởi thông tin lâm sàng.
 - **Đa nhãn**: Nếu phát hiện Pneumonia, trả về xác suất 5 bệnh lý, với top 3 được hiển thị nổi bật.
 - **Mâu thuẫn**: Cảnh báo nếu chẩn đoán AI và bác sĩ không khớp (độ mâu thuẫn > 0.4), kèm khuyến nghị xét nghiệm hoặc theo dõi.
 - **Thời gian xử lý**: ~1 giây cho mỗi ảnh (tùy cấu hình server).
