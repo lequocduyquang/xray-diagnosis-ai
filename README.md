@@ -1,6 +1,6 @@
 # 🩻 X-Ray Diagnosis AI
 
-**X-Ray Diagnosis AI** là một hệ thống trí tuệ nhân tạo hỗ trợ bác sĩ tại Bệnh viện Nhi đồng 2 trong việc phân tích ảnh X-quang phổi trẻ em. Hệ thống kết hợp thông tin lâmL sàng từ bác sĩ và phân tích ảnh X-quang để chẩn đoán các bệnh lý hô hấp, với mục tiêu tăng độ chính xác và hỗ trợ ra quyết định lâm sàng.
+**X-Ray Diagnosis AI** là một hệ thống trí tuệ nhân tạo hỗ trợ bác sĩ tại Bệnh viện Nhi đồng 2 trong việc phân tích ảnh X-quang phổi trẻ em. Hệ thống kết hợp thông tin lâm sàng từ bác sĩ và phân tích ảnh X-quang để chẩn đoán các bệnh lý hô hấp, với mục tiêu tăng độ chính xác và hỗ trợ ra quyết định lâm sàng.
 
 Hệ thống hiện tại:
 
