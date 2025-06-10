@@ -121,7 +121,7 @@ router.get("/image/:cloudinaryId", async (req, res) => {
       });
     }
 
-    const image = await getImageByCloudinaryId(cloudinaryId);
+    const image = await getImageByCloudinaryId(`xray-images/${cloudinaryId}`);
 
     if (!image) {
       return res.status(404).json({
