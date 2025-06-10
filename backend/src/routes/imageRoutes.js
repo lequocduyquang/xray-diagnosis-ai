@@ -65,6 +65,7 @@ const handleDicomFile = async (req, res, next) => {
       // Cập nhật thông tin file trong req.file
       req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
       req.file.mimetype = "image/png"; // MIME type của file PNG
+      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
 
       // Xóa file PNG tạm thời sau khi upload
       await fs.unlink(convertedPath);
@@ -91,6 +92,7 @@ const handleDicomFile = async (req, res, next) => {
 
       // Cập nhật thông tin file trong req.file
       req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
+      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
 
       // Xóa file tạm thời sau khi upload
       await fs.unlink(filePath);

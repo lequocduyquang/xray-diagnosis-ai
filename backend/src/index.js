@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import imageRoutes from "./routes/imageRoutes.js";
+import { initializeDatabase } from "./config/database.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
@@ -35,6 +36,22 @@ app.get("/health", (req, res) => {
 app.use("/api", imageRoutes);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
-});
+
+// Khởi tạo database và khởi động server
+async function startServer() {
+  try {
+    // Khởi tạo database
+    await initializeDatabase();
+
+    // Khởi động server
+    app.listen(PORT, () => {
+      console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
+      console.log(`📊 Database đã sẵn sàng`);
+    });
+  } catch (error) {
+    console.error("❌ Lỗi khởi động server:", error);
+    process.exit(1);
+  }
+}
+
+startServer();

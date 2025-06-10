@@ -22,6 +22,9 @@ export async function analyzeXray(req, res) {
       return res.status(400).json({ error: "Không tìm thấy file ảnh!" });
     }
 
+    // Lấy cloudinary_id từ req.file (đã được thêm trong middleware)
+    const cloudinaryId = req.file?.cloudinaryId;
+
     // Parse clinical_info từ body
     let clinical_info = {};
     if (req.body.clinical_info) {
@@ -54,10 +57,15 @@ export async function analyzeXray(req, res) {
     }
 
     console.log(`File ảnh đã upload: ${imagePath}`);
+    console.log(`Cloudinary ID: ${cloudinaryId}`);
     console.log(`Thông tin lâm sàng: ${JSON.stringify(clinical_info)}`);
 
-    // Gọi hàm analyzeXrayImage với imagePath và clinical_info
-    const result = await analyzeXrayImage(imagePath, clinical_info);
+    // Gọi hàm analyzeXrayImage với imagePath, clinical_info và cloudinaryId
+    const result = await analyzeXrayImage(
+      imagePath,
+      clinical_info,
+      cloudinaryId
+    );
 
     res.json(result);
   } catch (err) {

@@ -4,6 +4,7 @@ import * as ort from "onnxruntime-node";
 import path from "path";
 import { fileURLToPath } from "url";
 import { softmax, sigmoid } from "../utils/calculation.js";
+import { saveImageToDatabase } from "./databaseService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,9 +99,14 @@ function adjust_probabilities(
  * Phân tích ảnh X-quang với thông tin lâm sàng
  * @param {string} filePathOrUrl Đường dẫn ảnh local hoặc URL
  * @param {Object} clinical_info Thông tin lâm sàng { initial_diagnosis, symptoms }
+ * @param {string} cloudinaryId ID của ảnh trên Cloudinary (optional)
  * @returns {Promise<any>}
  */
-export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
+export async function analyzeXrayImage(
+  filePathOrUrl,
+  clinical_info = {},
+  cloudinaryId = null
+) {
   try {
     let fileBuffer;
 
@@ -161,6 +167,25 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
     ); // Debug
 
     if (finalLabel === "Normal") {
+      // Cập nhật model_name trong database nếu có cloudinaryId
+      if (cloudinaryId) {
+        try {
+          await saveImageToDatabase({
+            cloudinaryId: cloudinaryId,
+            cloudinaryUrl: filePathOrUrl,
+            modelName: "ResNet50",
+          });
+          console.log(
+            `✅ Đã cập nhật model_name = ResNet50 cho cloudinary_id: ${cloudinaryId}`
+          );
+        } catch (dbError) {
+          console.error(
+            "⚠️ Lỗi khi cập nhật model_name trong database:",
+            dbError
+          );
+        }
+      }
+
       return {
         success: true,
         stage: "binary-classification",
@@ -196,6 +221,25 @@ export async function analyzeXrayImage(filePathOrUrl, clinical_info = {}) {
     const multiLabelTop = {};
     for (let i = 0; i < 3; i++) {
       multiLabelTop[i] = sorted[i] || null;
+    }
+
+    // Cập nhật model_name trong database nếu có cloudinaryId
+    if (cloudinaryId) {
+      try {
+        await saveImageToDatabase({
+          cloudinaryId: cloudinaryId,
+          cloudinaryUrl: filePathOrUrl,
+          modelName: "DenseNet121",
+        });
+        console.log(
+          `✅ Đã cập nhật model_name = DenseNet121 cho cloudinary_id: ${cloudinaryId}`
+        );
+      } catch (dbError) {
+        console.error(
+          "⚠️ Lỗi khi cập nhật model_name trong database:",
+          dbError
+        );
+      }
     }
 
     return {

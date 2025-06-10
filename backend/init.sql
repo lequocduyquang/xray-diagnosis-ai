@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS images (
+    id SERIAL PRIMARY KEY,
+    cloudinary_id VARCHAR(255) NOT NULL,
+    cloudinary_url TEXT NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+); 
