@@ -196,6 +196,7 @@ export async function analyzeXrayImage(
           predictedClass: finalLabel,
           classLabels: binaryClassLabels,
           warnings: binaryWarnings,
+          cloudinaryId,
         },
       };
     }
@@ -253,6 +254,7 @@ export async function analyzeXrayImage(
         classLabels: binaryClassLabels,
         multiLabelTop,
         allMultiLabelScores,
+        cloudinaryId,
         warnings: binaryWarnings,
       },
     };

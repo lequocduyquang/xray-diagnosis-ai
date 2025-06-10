@@ -4,6 +4,7 @@ import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
 import { analyzeXray } from "../controllers/imageControllers.js";
 import { dicomToPng } from "../utils/imageProcessing.js";
+import { getImageByCloudinaryId } from "../services/databaseService.js";
 import fs from "fs/promises";
 import path from "path";
 import { uploadsDir } from "../index.js";
@@ -107,5 +108,49 @@ const handleDicomFile = async (req, res, next) => {
 
 // Route phân tích ảnh X-ray
 router.post("/analyze", upload.single("image"), handleDicomFile, analyzeXray);
+
+// Route lấy thông tin ảnh theo cloudinary_id
+router.get("/image/:cloudinaryId", async (req, res) => {
+  try {
+    const { cloudinaryId } = req.params;
+
+    if (!cloudinaryId) {
+      return res.status(400).json({
+        success: false,
+        error: "cloudinary_id là bắt buộc",
+      });
+    }
+
+    const image = await getImageByCloudinaryId(cloudinaryId);
+
+    if (!image) {
+      return res.status(404).json({
+        success: false,
+        error: "Không tìm thấy ảnh với cloudinary_id này",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: image.id,
+        cloudinary_id: image.cloudinary_id,
+        cloudinary_url: image.cloudinary_url,
+        model_name: image.model_name,
+        original_filename: image.original_filename,
+        file_size: image.file_size,
+        mime_type: image.mime_type,
+        created_at: image.created_at,
+        updated_at: image.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy thông tin ảnh:", error);
+    res.status(500).json({
+      success: false,
+      error: "Lỗi khi lấy thông tin ảnh từ database",
+    });
+  }
+});
 
 export default router;
