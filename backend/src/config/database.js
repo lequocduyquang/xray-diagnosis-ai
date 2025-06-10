@@ -14,6 +14,9 @@ const pool = new Pool({
   max: 20, // Số kết nối tối đa trong pool
   idleTimeoutMillis: 30000, // Thời gian timeout cho kết nối idle
   connectionTimeoutMillis: 2000, // Thời gian timeout khi tạo kết nối mới
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 // Test kết nối database
