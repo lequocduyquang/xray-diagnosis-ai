@@ -197,6 +197,7 @@ export async function analyzeXrayImage(
           classLabels: binaryClassLabels,
           warnings: binaryWarnings,
           cloudinaryId,
+          modelName: "ResNet50",
         },
       };
     }
@@ -256,6 +257,7 @@ export async function analyzeXrayImage(
         allMultiLabelScores,
         cloudinaryId,
         warnings: binaryWarnings,
+        modelName: "DenseNet121",
       },
     };
   } catch (error) {
