@@ -1,0 +1,8 @@
+aliases:
+  production: '1'
+creation_timestamp: 1750040939784
+deployment_job_id: null
+deployment_job_state: null
+description: null
+last_updated_timestamp: 1750046699335
+name: wine_quality_classifier

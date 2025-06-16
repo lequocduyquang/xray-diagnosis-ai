@@ -36,3 +36,6 @@ backend/scripts
 
 # Grad-CAM models
 gradcam/models
+
+# MLOps
+mlruns/

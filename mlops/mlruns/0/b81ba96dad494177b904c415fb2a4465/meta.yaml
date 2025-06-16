@@ -1,0 +1,14 @@
+artifact_uri: file:///D:/xray-diagnosis-ai/mlops/mlruns/0/b81ba96dad494177b904c415fb2a4465/artifacts
+end_time: 1750040939979
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: b81ba96dad494177b904c415fb2a4465
+run_name: receptive-ant-153
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1750040900027
+status: 3
+tags: []
+user_id: quang.lequocduy

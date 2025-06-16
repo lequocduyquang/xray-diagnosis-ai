@@ -1,0 +1,10 @@
+artifact_location: file:///D:/xray-diagnosis-ai/mlops/mlruns/0/models/m-9bca50bc65604b9c8d10a822eee9a73f/artifacts
+creation_timestamp: 1750040900581
+experiment_id: '0'
+last_updated_timestamp: 1750040939685
+model_id: m-9bca50bc65604b9c8d10a822eee9a73f
+model_type: null
+name: model
+source_run_id: b81ba96dad494177b904c415fb2a4465
+status: 2
+status_message: null

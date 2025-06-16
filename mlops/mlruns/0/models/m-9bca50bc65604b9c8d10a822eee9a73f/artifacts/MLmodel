@@ -1,0 +1,22 @@
+artifact_path: file:///D:/xray-diagnosis-ai/mlops/mlruns/0/models/m-9bca50bc65604b9c8d10a822eee9a73f/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.12.3
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.7.0
+mlflow_version: 3.1.0
+model_id: m-9bca50bc65604b9c8d10a822eee9a73f
+model_size_bytes: 1055
+model_uuid: m-9bca50bc65604b9c8d10a822eee9a73f
+prompts: null
+run_id: b81ba96dad494177b904c415fb2a4465
+utc_time_created: '2025-06-16 02:28:20.904523'
