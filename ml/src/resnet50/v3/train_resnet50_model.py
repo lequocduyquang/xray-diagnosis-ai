@@ -11,6 +11,15 @@ from torch.utils.data import DataLoader
 from resnet50_dataset import XRayDataset
 from resnet50_model import ResNet50
 
+# ==== MLflow (Databricks) setup ====
+from dotenv import load_dotenv
+import mlflow
+import mlflow.pytorch
+
+load_dotenv()
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
+mlflow.set_experiment("/Users/duyquangbtx@gmail.com/resnet50_experiment")
+
 # ==== FOCAL LOSS DEFINITION ====
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
@@ -115,58 +124,81 @@ for fold, (train_idx, val_idx) in enumerate(mskf.split(np.zeros(len(labels)), la
     best_val_f1 = 0.0
     best_thresholds = [0.5] * NUM_CLASSES
 
-    for epoch in range(1, NUM_EPOCHS + 1):
-        model.train()
-        train_loss = 0.0
+    # ==== MLflow tracking cho từng fold ====
+    with mlflow.start_run(run_name=f"fold_{fold}"):
+        # Log các tham số
+        mlflow.log_param("fold", fold)
+        mlflow.log_param("batch_size", BATCH_SIZE)
+        mlflow.log_param("num_epochs", NUM_EPOCHS)
+        mlflow.log_param("learning_rate", LEARNING_RATE)
+        mlflow.log_param("gamma", 2)
+        mlflow.log_param("model", "resnet50")
+        mlflow.log_param("optimizer", "adam")
+        mlflow.log_param("loss", "focal_loss")
 
-        for inputs, targets in train_loader:
-            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+        for epoch in range(1, NUM_EPOCHS + 1):
+            model.train()
+            train_loss = 0.0
 
-        avg_train_loss = train_loss / len(train_loader)
-
-        # === Validation ===
-        model.eval()
-        val_loss = 0.0
-        all_preds = []
-        all_targets = []
-
-        with torch.no_grad():
-            for inputs, targets in val_loader:
+            for inputs, targets in train_loader:
                 inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+                optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-                val_loss += loss.item()
-                preds = torch.sigmoid(outputs)
-                all_preds.append(preds.cpu())
-                all_targets.append(targets.cpu())
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
 
-        avg_val_loss = val_loss / len(val_loader)
-        all_preds = torch.cat(all_preds).numpy()
-        all_targets = torch.cat(all_targets).numpy()
+            avg_train_loss = train_loss / len(train_loader)
 
-        best_thresholds = find_best_thresholds(all_targets, all_preds)
+            # === Validation ===
+            model.eval()
+            val_loss = 0.0
+            all_preds = []
+            all_targets = []
 
-        preds_binary = np.zeros_like(all_preds, dtype=int)
-        for i in range(NUM_CLASSES):
-            preds_binary[:, i] = (all_preds[:, i] > best_thresholds[i]).astype(int)
+            with torch.no_grad():
+                for inputs, targets in val_loader:
+                    inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets)
+                    val_loss += loss.item()
+                    preds = torch.sigmoid(outputs)
+                    all_preds.append(preds.cpu())
+                    all_targets.append(targets.cpu())
 
-        val_f1 = f1_score(all_targets, preds_binary, average='weighted')
+            avg_val_loss = val_loss / len(val_loader)
+            all_preds = torch.cat(all_preds).numpy()
+            all_targets = torch.cat(all_targets).numpy()
 
-        print(f"[Fold {fold}][Epoch {epoch}/{NUM_EPOCHS}] "
-              f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val F1: {val_f1:.4f}")
-        print(f" Thresholds: {np.round(best_thresholds, 3)}")
+            best_thresholds = find_best_thresholds(all_targets, all_preds)
 
-        if val_f1 > best_val_f1:
-            best_val_f1 = val_f1
-            save_path = os.path.join(MODEL_DIR, f"resnet50_fold{fold}_best.pth")
-            torch.save(model.state_dict(), save_path)
-            torch.save(model.state_dict(), os.path.join(MODEL_DIR, "resnet50_finetuned.pth"))
-            print(f"✅ Saved best model fold {fold} at epoch {epoch} with Val F1: {val_f1:.4f}")
+            preds_binary = np.zeros_like(all_preds, dtype=int)
+            for i in range(NUM_CLASSES):
+                preds_binary[:, i] = (all_preds[:, i] > best_thresholds[i]).astype(int)
+
+            val_f1 = f1_score(all_targets, preds_binary, average='weighted')
+
+            print(f"[Fold {fold}][Epoch {epoch}/{NUM_EPOCHS}] "
+                  f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val F1: {val_f1:.4f}")
+            print(f" Thresholds: {np.round(best_thresholds, 3)}")
+
+            # Log metrics lên MLflow
+            mlflow.log_metric("train_loss", avg_train_loss, step=epoch)
+            mlflow.log_metric("val_loss", avg_val_loss, step=epoch)
+            mlflow.log_metric("val_f1", val_f1, step=epoch)
+
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
+                save_path = os.path.join(MODEL_DIR, f"resnet50_fold{fold}_best.pth")
+                torch.save(model.state_dict(), save_path)
+                torch.save(model.state_dict(), os.path.join(MODEL_DIR, "resnet50_finetuned.pth"))
+                print(f"✅ Saved best model fold {fold} at epoch {epoch} with Val F1: {val_f1:.4f}")
+
+                # Log model lên MLflow Databricks Model Registry (Unity Catalog)
+                mlflow.pytorch.log_model(
+                    model,
+                    name="lakehouse_local.default.resnet50_classifier"
+                )
 
 print("🏁 Training complete.")
