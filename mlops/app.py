@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from dotenv import load_dotenv
+import os
 import pandas as pd
 import mlflow
+
+load_dotenv()
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 
 class WineFeatures(BaseModel):
     fixed_acidity: float
@@ -18,7 +23,7 @@ class WineFeatures(BaseModel):
 
 app = FastAPI(title="Wine Quality Prediction API")
 
-MODEL_URI = "models:/wine_quality_classifier@production"
+MODEL_URI = "models:/lakehouse_local.default.wine_quality_classifier/2"
 model = mlflow.pyfunc.load_model(model_uri=MODEL_URI)
 print("Mô hình đã được tải thành công!")
 

@@ -1,9 +1,18 @@
+from numpy import sign
 import pandas as pd
+import os
+from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 import mlflow
 import mlflow.sklearn
+from mlflow.models.signature import infer_signature
+
+load_dotenv()
+
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+mlflow.set_experiment("/Users/duyquangbtx@gmail.com/wine_quality_experiment")
 
 def get_data():
     URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
@@ -35,13 +44,12 @@ def train():
         
         print(f"  Accuracy: {accuracy}")
 
-        # Đăng ký mô hình vào MLflow Model Registry
-        # Đây là bước quan trọng để quản lý phiên bản
+        signature = infer_signature(X_train, lr.predict(X_train))
         print("Đăng ký mô hình vào Model Registry...")
         mlflow.sklearn.log_model(
             sk_model=lr,
-            artifact_path="model",
-            registered_model_name="wine_quality_classifier" # Tên model trong Registry
+            registered_model_name="lakehouse_local.default.wine_quality_classifier",
+            signature=signature
         )
         print("Hoàn thành!")
 
