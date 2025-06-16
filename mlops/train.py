@@ -11,7 +11,7 @@ from mlflow.models.signature import infer_signature
 
 load_dotenv()
 
-mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
 mlflow.set_experiment("/Users/duyquangbtx@gmail.com/wine_quality_experiment")
 
 def get_data():
