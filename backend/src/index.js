@@ -6,6 +6,7 @@ import { initializeDatabase } from "./config/database.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
+import { ensureModelDownloaded } from "./services/huggingfaceService.js";
 
 dotenv.config();
 
@@ -42,6 +43,13 @@ async function startServer() {
   try {
     // Khởi tạo database
     await initializeDatabase();
+
+    // Đảm bảo models đã được tải về
+    await Promise.all([
+      ensureModelDownloaded("resnetV1"),
+      ensureModelDownloaded("resnetV2"),
+      ensureModelDownloaded("densenet"),
+    ]);
 
     // Khởi động server
     app.listen(PORT, () => {
