@@ -49,7 +49,14 @@ def train():
         mlflow.sklearn.log_model(
             sk_model=lr,
             registered_model_name="lakehouse_local.default.wine_quality_classifier",
-            signature=signature
+            signature=signature,
+            pip_requirements=[
+                "scikit-learn==1.7.0",
+                "pandas==2.3.0",
+                "numpy==2.3.0",
+                "mlflow==3.1.0"
+            ],
+            conda_env=None
         )
         print("Hoàn thành!")
 

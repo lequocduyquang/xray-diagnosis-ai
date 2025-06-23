@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 import pandas as pd
 import mlflow
+import requests
 
 load_dotenv()
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
@@ -23,9 +24,12 @@ class WineFeatures(BaseModel):
 
 app = FastAPI(title="Wine Quality Prediction API")
 
-MODEL_URI = "models:/lakehouse_local.default.wine_quality_classifier/2"
-model = mlflow.pyfunc.load_model(model_uri=MODEL_URI)
-print("Mô hình đã được tải thành công!")
+# MODEL_URI = "models:/lakehouse_local.default.wine_quality_classifier/2"
+# model = mlflow.pyfunc.load_model(model_uri=MODEL_URI)
+# print("Mô hình đã được tải thành công!")
+
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+ENDPOINT_URL = "https://dbc-6223a2f8-99e4.cloud.databricks.com/serving-endpoints/wine_quality/invocations"
 
 @app.get("/")
 def read_root():
@@ -48,7 +52,14 @@ def predict_quality(features: WineFeatures):
     }
     input_dict = features.dict()
     mapped_dict = {feature_map[k]: v for k, v in input_dict.items()}
-    df = pd.DataFrame([mapped_dict])
-    prediction = model.predict(df)
-    result = "Good Quality" if prediction[0] == 1 else "Bad Quality"
+    data = {"dataframe_records": [mapped_dict]}
+
+    headers = {
+        "Authorization": f"Bearer {DATABRICKS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post(ENDPOINT_URL, json=data, headers=headers)
+    response.raise_for_status()
+    prediction = response.json()["predictions"][0]
+    result = "Good Quality" if prediction == 1 else "Bad Quality"
     return {"predicted_quality": result}
