@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { softmax, sigmoid } from "../utils/calculation.js";
 import { saveImageToDatabase } from "./databaseService.js";
-import { ensureModelDownloaded } from "./huggingfaceService.js";
+// import { ensureModelDownloaded } from "./huggingfaceService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,11 +127,11 @@ export async function analyzeXrayImage(
     const inputTensor = await preprocessImage(fileBuffer);
 
     // // Đường dẫn tới model
-    // const modelPaths = {
-    //   resnetV1: path.join(__dirname, "../ml-models/resnet50_v1.onnx"),
-    //   resnetV2: path.join(__dirname, "../ml-models/resnet50_v2.onnx"),
-    //   densenet: path.join(__dirname, "../ml-models/densenet121.onnx"),
-    // };
+    const modelPaths = {
+      resnetV1: path.join(__dirname, "../ml-models/resnet50_v1.onnx"),
+      resnetV2: path.join(__dirname, "../ml-models/resnet50_v2.onnx"),
+      densenet: path.join(__dirname, "../ml-models/densenet121.onnx"),
+    };
 
     // await Promise.all([
     //   ensureModelDownloaded("resnetV1"),
@@ -140,11 +140,11 @@ export async function analyzeXrayImage(
     // ]);
 
     // Đường dẫn tới model local (đồng bộ với huggingfaceService.js)
-    const modelPaths = {
-      resnetV1: path.join(__dirname, "../ml-models-v2/resnet50_v1.onnx"),
-      resnetV2: path.join(__dirname, "../ml-models-v2/resnet50_v2.onnx"),
-      densenet: path.join(__dirname, "../ml-models-v2/densenet121.onnx"),
-    };
+    // const modelPaths = {
+    //   resnetV1: path.join(__dirname, "../ml-models-v2/resnet50_v1.onnx"),
+    //   resnetV2: path.join(__dirname, "../ml-models-v2/resnet50_v2.onnx"),
+    //   densenet: path.join(__dirname, "../ml-models-v2/densenet121.onnx"),
+    // };
 
     // Chạy song song ResNet50 V1 và V2
     const [adult, child] = await Promise.all([

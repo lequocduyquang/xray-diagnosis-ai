@@ -45,9 +45,9 @@ async function startServer() {
     await initializeDatabase();
 
     // Đảm bảo models đã được tải về
-    await ensureModelDownloaded("resnetV1");
-    await ensureModelDownloaded("resnetV2");
-    await ensureModelDownloaded("densenet");
+    // await ensureModelDownloaded("resnetV1");
+    // await ensureModelDownloaded("resnetV2");
+    // await ensureModelDownloaded("densenet");
 
     // Khởi động server
     app.listen(PORT, () => {
