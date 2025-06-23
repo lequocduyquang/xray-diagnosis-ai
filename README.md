@@ -27,12 +27,9 @@ Hệ thống hiện tại:
 
 ```
 xray-diagnosis-ai/
-├── ml-models/                 # Thư mục chứa các mô hình ONNX
-│   ├── resnet50_v1.onnx      # ResNet50 v1 (train trên 2000 ảnh trẻ 1–5 tuổi, Quảng Châu)
-│   ├── resnet50_v2.onnx      # ResNet50 v2 (train trên 1700 ảnh trẻ <10 tuổi, Việt Nam)
-│   └── densenet121.onnx      # DenseNet121 (train trên 1000 ảnh Việt Nam, phân loại 5 bệnh)
 ├── services/                 # Chứa logic xử lý AI
-│   └── onnxService.js        # Hàm phân tích ảnh và điều chỉnh xác suất với clinical_info
+│   ├── onnxService.js        # Hàm phân tích ảnh và điều chỉnh xác suất với clinical_info
+│   └── huggingfaceService.js # Hàm tải/caching model từ HuggingFace về local
 ├── controllers/              # API controllers
 │   └── xray_controller.js    # Xử lý request upload ảnh và clinical_info
 ├── public/                   # Tài nguyên tĩnh
@@ -45,6 +42,9 @@ xray-diagnosis-ai/
 └── package.json              # Dependencies và scripts
 ```
 
+> **Lưu ý:**  
+> Các file model ONNX **không còn lưu trực tiếp trong repo** mà sẽ được tự động tải về từ HuggingFace khi backend khởi động hoặc khi cần.
+
 ---
 
 ## 🧠 Cách hoạt động
@@ -56,18 +56,21 @@ Hệ thống hoạt động theo quy trình sau:
    - Bác sĩ nhập thông tin lâm sàng:
      - **Chẩn đoán ban đầu** (`initial_diagnosis`): Normal, Pneumonia, Bronchitis, Brocho-pneumonia, Other disease, Bronchiolitis.
      - **Triệu chứng** (`symptoms`): Sốt, khó thở, ho, thở khò khè.
-2. **Phân tích nhị phân**:
+2. **Tải/caching model ONNX từ HuggingFace**:
+   - Khi backend khởi động hoặc khi inference lần đầu, các model ONNX sẽ được tải về từ HuggingFace Hub và lưu cache local.
+   - Nếu model đã có local, sẽ không tải lại.
+3. **Phân tích nhị phân**:
    - Hai mô hình ResNet50 (v1 và v2) chạy song song để phân loại Normal hoặc Pneumonia.
    - Kết quả được kết hợp bằng trọng số (0.4 cho v1, 0.6 cho v2).
    - Xác suất được điều chỉnh dựa trên thông tin lâm sàng (ví dụ: tăng xác suất Pneumonia nếu bác sĩ chọn Pneumonia).
-3. **Phân loại đa nhãn** (nếu phát hiện Pneumonia):
+4. **Phân loại đa nhãn** (nếu phát hiện Pneumonia):
    - Mô hình DenseNet121 phân loại 5 bệnh lý: Bronchitis, Brocho-pneumonia, Other disease, Bronchiolitis, Pneumonia.
    - Xác suất được điều chỉnh dựa trên thông tin lâm sàng.
-4. **Xử lý mâu thuẫn**:
+5. **Xử lý mâu thuẫn**:
    - Nếu chẩn đoán AI và bác sĩ mâu thuẫn (ví dụ: bác sĩ chọn Pneumonia, AI chọn Normal), hệ thống:
      - Điều chỉnh xác suất bằng trọng số (`W_clinical`): 1.2 cho chẩn đoán của bác sĩ, 0.8 cho chẩn đoán của AI.
      - Đưa ra cảnh báo nếu độ mâu thuẫn > 0.49.
-5. **Kết quả**:
+6. **Kết quả**:
    - Hiển thị: Xác suất nhị phân, top 3 chẩn đoán phụ, tất cả chẩn đoán phụ, thông tin lâm sàng, và cảnh báo mâu thuẫn.
 
 ---
@@ -101,9 +104,10 @@ Hệ thống hoạt động theo quy trình sau:
    npm install
    ```
 
-3. **Đặt mô hình ONNX**:
+3. **Không cần copy file model ONNX thủ công**:
 
-   - Copy các file `resnet50_v1.onnx`, `resnet50_v2.onnx`, `densenet121.onnx` vào thư mục `ml-models/`.
+   - Các file model sẽ được backend **tự động tải về từ HuggingFace** khi khởi động hoặc khi inference lần đầu.
+   - Bạn có thể kiểm tra thư mục `ml-models-v2/` (hoặc tương ứng) để xem các file model đã được cache local.
 
 4. **Chạy ứng dụng**:
    ```bash
@@ -122,6 +126,7 @@ Hệ thống hoạt động theo quy trình sau:
 - **ResNet50 v2**: Huấn luyện trên 1700 ảnh X-quang trẻ em <10 tuổi từ Việt Nam, phân loại Normal/Pneumonia.
 - **DenseNet121**: Huấn luyện trên 1000 ảnh X-quang Việt Nam, phân loại 5 bệnh lý: Bronchitis, Brocho-pneumonia, Other disease, Bronchiolitis, Pneumonia.
 - **Định dạng**: Mô hình được export từ PyTorch sang ONNX để sử dụng trong Node.js.
+- **Lưu trữ**: Model ONNX được lưu trữ trên HuggingFace Hub, backend sẽ tự động tải về khi cần.
 
 ### 2. Backend (Node.js)
 
@@ -129,6 +134,7 @@ Hệ thống hoạt động theo quy trình sau:
 - **API**: Xử lý upload ảnh và thông tin lâm sàng, trả về kết quả phân tích.
 - **Logic**:
   - Tiền xử lý ảnh (resize, normalize).
+  - Tải/caching model ONNX từ HuggingFace về local.
   - Chạy mô hình ResNet50 v1/v2 song song, kết hợp xác suất.
   - Chạy DenseNet121 nếu phát hiện Pneumonia.
   - Điều chỉnh xác suất dựa trên `clinical_info` (chẩn đoán ban đầu, triệu chứng).

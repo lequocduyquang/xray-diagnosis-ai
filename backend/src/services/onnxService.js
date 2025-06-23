@@ -133,11 +133,11 @@ export async function analyzeXrayImage(
     //   densenet: path.join(__dirname, "../ml-models/densenet121.onnx"),
     // };
 
-    await Promise.all([
-      ensureModelDownloaded("resnetV1"),
-      ensureModelDownloaded("resnetV2"),
-      ensureModelDownloaded("densenet"),
-    ]);
+    // await Promise.all([
+    //   ensureModelDownloaded("resnetV1"),
+    //   ensureModelDownloaded("resnetV2"),
+    //   ensureModelDownloaded("densenet"),
+    // ]);
 
     // Đường dẫn tới model local (đồng bộ với huggingfaceService.js)
     const modelPaths = {
