@@ -1,0 +1,11 @@
+{
+  "inputs": [],
+  "servers": {
+    "my-mcp-server": {
+      "command": "node",
+      "args": [
+        "D:/AI/xray-diagnosis-ai/backend/src/mcp-server.js"
+      ]
+    }
+  }
+}
