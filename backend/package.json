@@ -22,6 +22,7 @@
   "homepage": "https://github.com/lequocduyquang/xray-diagnosis-ai#readme",
   "description": "",
   "dependencies": {
+    "@google-cloud/aiplatform": "^4.2.0",
     "@langchain/langgraph": "^0.2.73",
     "@modelcontextprotocol/sdk": "^1.13.1",
     "axios": "^1.9.0",
@@ -37,6 +38,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "node-fetch": "3",
     "onnxruntime-node": "^1.22.0",
+    "openai": "^4.73.1",
     "pg": "^8.11.3",
     "pngjs": "^7.0.0",
     "sharp": "^0.34.1",
