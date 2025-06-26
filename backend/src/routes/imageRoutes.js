@@ -2,7 +2,11 @@ import express from "express";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
-import { analyzeXray } from "../controllers/imageControllers.js";
+import { 
+  analyzeXray, 
+  analyzeXrayGPT4oOnly, 
+  gpt4oHealthCheck 
+} from "../controllers/imageControllers.js";
 import { dicomToPng } from "../utils/imageProcessing.js";
 import { getImageByCloudinaryId } from "../services/databaseService.js";
 import fs from "fs/promises";
@@ -106,8 +110,34 @@ const handleDicomFile = async (req, res, next) => {
   next();
 };
 
-// Route phân tích ảnh X-ray
-router.post("/analyze", upload.single("image"), handleDicomFile, analyzeXray);
+// Middleware kiểm tra OpenAI API key (chỉ cho các endpoint cần GPT-4o)
+const validateOpenAIKey = (req, res, next) => {
+  const enableGPT4o = req.query.enable_gpt4o === 'true' || 
+                      req.body.enable_gpt4o === true ||
+                      req.body.enable_gpt4o === 'true';
+  
+  // Chỉ kiểm tra nếu GPT-4o được enable hoặc là endpoint GPT-4o only
+  if (enableGPT4o || req.originalUrl.includes('gpt4o')) {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(400).json({
+        error: "OPENAI_API_KEY không được cấu hình! Vui lòng thêm vào file .env",
+        suggestion: "Thêm OPENAI_API_KEY=your_api_key_here vào file .env"
+      });
+    }
+  }
+  next();
+};
+
+// ==================== MAIN ROUTES ====================
+
+// Route phân tích ảnh X-ray (ONNX models + GPT-4o tùy chọn)
+router.post("/analyze", upload.single("image"), handleDicomFile, validateOpenAIKey, analyzeXray);
+
+// Route chỉ chạy GPT-4o analysis (cho testing)
+router.post("/gpt4o-only", upload.single("image"), handleDicomFile, validateOpenAIKey, analyzeXrayGPT4oOnly);
+
+// Route health check cho GPT-4o service
+router.get("/gpt4o-health", gpt4oHealthCheck);
 
 // Route lấy thông tin ảnh theo cloudinary_id
 router.get("/image/:cloudinaryId", async (req, res) => {
