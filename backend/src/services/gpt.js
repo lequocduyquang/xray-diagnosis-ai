@@ -100,7 +100,7 @@ BẮT BUỘC: Trả lời CHÍNH XÁC theo JSON format:
 - Kinh nghiệm lâm sàng và đọc ảnh vượt trội
 - Không bao giờ bỏ sót bệnh lý nguy hiểm
 - Thà over-diagnose hơn under-diagnose
-- Luôn cân nhắk các yếu tố clinical context
+- Luôn cân nhắc các yếu tố clinical context
 
 BẮT BUỘC: Trả lời theo JSON format sau:
 

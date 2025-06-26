@@ -139,6 +139,66 @@ router.post("/gpt4o-only", upload.single("image"), handleDicomFile, validateOpen
 // Route health check cho GPT-4o service
 router.get("/gpt4o-health", gpt4oHealthCheck);
 
+// 🩺 Manual Second Opinion endpoint - for testing disagreement resolution
+router.post("/second-opinion", upload.single("image"), handleDicomFile, validateOpenAIKey, async (req, res) => {
+  try {
+    const imageUrl = req.file?.cloudinaryUrl || req.file?.path;
+    if (!imageUrl) {
+      return res.status(400).json({ error: "Không tìm thấy file ảnh!" });
+    }
+
+    const { onnx_diagnosis, gpt4o_diagnosis } = req.body;
+    if (!onnx_diagnosis || !gpt4o_diagnosis) {
+      return res.status(400).json({ 
+        error: "Cần cung cấp cả onnx_diagnosis và gpt4o_diagnosis!",
+        example: {
+          onnx_diagnosis: "Pneumonia",
+          gpt4o_diagnosis: "Normal",
+          clinical_info: "{\"age\":\"5\",\"symptoms\":[\"cough\"]}"
+        }
+      });
+    }
+
+    let clinical_info = {};
+    if (req.body.clinical_info) {
+      try {
+        clinical_info = JSON.parse(req.body.clinical_info);
+      } catch (err) {
+        return res.status(400).json({ error: "clinical_info phải là JSON hợp lệ!" });
+      }
+    }
+
+    console.log('🩺 Manual second opinion requested...');
+    console.log(`📊 Disagreement: ONNX(${onnx_diagnosis}) vs GPT-4o(${gpt4o_diagnosis})`);
+    
+    const { getSecondOpinion } = await import('../services/gpt.js');
+    
+    const secondOpinionResult = await getSecondOpinion(
+      imageUrl,
+      onnx_diagnosis,
+      gpt4o_diagnosis,
+      clinical_info
+    );
+
+    res.json({
+      ...secondOpinionResult,
+      request_type: 'manual_second_opinion',
+      input_disagreement: {
+        onnx_diagnosis,
+        gpt4o_diagnosis
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (err) {
+    console.error("❌ Manual second opinion error:", err);
+    res.status(500).json({ 
+      error: "Lỗi khi thực hiện second opinion!",
+      details: err.message 
+    });
+  }
+});
+
 // Route lấy thông tin ảnh theo cloudinary_id
 router.get("/image/:cloudinaryId", async (req, res) => {
   try {
