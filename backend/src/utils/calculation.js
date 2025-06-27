@@ -130,3 +130,83 @@ export function checkDangerousDisagreement(onnxDiagnosis, gpt4oDiagnosis) {
 
   return isDangerous;
 }
+
+
+/**
+ * Tạo reasoning cho final decision của 3-AI system
+ * @param {object} finalResult - Kết quả phân tích cuối cùng
+ * @returns {string} Reasoning text
+ */
+export function getFinalDecisionReasoning(finalResult) {
+  const meta = finalResult.analysis_metadata;
+
+  if (meta.professor_ai_used) {
+    return `Professor AI resolved dangerous disagreement between ONNX Models (${meta.onnx_diagnosis}) and GPT-4o (${meta.gpt4o_diagnosis}). Expert medical analysis was required for patient safety.`;
+  }
+
+  if (meta.ai_agreement) {
+    const source = finalResult.consensus_source || "AI Models";
+    return `All AI models reached consensus. Final diagnosis based on ${source} with highest confidence score.`;
+  }
+
+  if (meta.disagreement_detected) {
+    return `Disagreement detected but not dangerous. Using model with higher confidence score.`;
+  }
+
+  return `Standard 3-AI analysis completed. Diagnosis based on combined AI assessment.`;
+}
+
+/**
+ * Tạo clinical recommendations dựa trên kết quả phân tích
+ * @param {object} analysisResult - Kết quả phân tích tổng hợp
+ * @param {object} clinical_info - Thông tin lâm sàng
+ * @returns {object} Clinical recommendations
+ */
+export function generateClinicalRecommendations(analysisResult, clinical_info) {
+  const recommendations = {
+    priority: 'routine',
+    actions: [],
+    follow_up: [],
+    warnings: []
+  };
+
+  // Dựa trên kết quả ONNX
+  if (analysisResult.finalLabel === 'Pneumonia') {
+    recommendations.priority = 'urgent';
+    recommendations.actions.push('Xác nhận chẩn đoán với bác sĩ lâm sàng');
+    recommendations.actions.push('Xét nghiệm máu (WBC, CRP)');
+    recommendations.actions.push('Cân nhắc điều trị kháng sinh');
+  } else if (analysisResult.finalLabel === 'Normal') {
+    recommendations.actions.push('Theo dõi triệu chứng lâm sàng');
+    recommendations.follow_up.push('Tái khám nếu có triệu chứng mới');
+  }
+
+  // Dựa trên kết quả GPT-4o
+  if (analysisResult.gpt4o_analysis?.success && analysisResult.gpt4o_analysis.analysis?.recommendations) {
+    recommendations.actions.push(...analysisResult.gpt4o_analysis.analysis.recommendations);
+  }
+
+  // Dựa trên synthesis
+  if (analysisResult.ai_synthesis?.success) {
+    const synthesis = analysisResult.ai_synthesis.synthesis;
+    if (synthesis.final_recommendation) {
+      recommendations.actions.push(synthesis.final_recommendation);
+    }
+  }
+
+  // Warning về agreement level
+  if (analysisResult.confidence_comparison?.agreement_level === 'low') {
+    recommendations.warnings.push('Độ tin cậy giữa các AI models thấp - cần xem xét kỹ');
+    recommendations.priority = 'urgent';
+  }
+
+  // Warning về clinical correlation
+  if (clinical_info.initial_diagnosis &&
+    analysisResult.finalLabel !== clinical_info.initial_diagnosis) {
+    recommendations.warnings.push(
+      `Mâu thuẫn giữa AI (${analysisResult.finalLabel}) và lâm sàng (${clinical_info.initial_diagnosis})`
+    );
+  }
+
+  return recommendations;
+}
