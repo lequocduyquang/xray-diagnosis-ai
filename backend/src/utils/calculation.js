@@ -29,11 +29,11 @@ export function sigmoid(x) {
  * @returns {string} Mức độ đồng thuận (high/medium/low)
  */
 export function getAgreementLevel(confidence1, confidence2) {
-  const difference = Math.abs(confidence1 - confidence2);
+  const confidenceDiff = Math.abs(confidence1 - confidence2);
 
-  if (difference <= 0.1) return 'high';      // Chênh lệch <= 10%
-  if (difference <= 0.3) return 'medium';    // Chênh lệch <= 30%
-  return 'low';                              // Chênh lệch > 30%
+  if (confidenceDiff < 0.2) return "high";
+  if (confidenceDiff < 0.5) return "medium";
+  return "low";
 }
 
 /**

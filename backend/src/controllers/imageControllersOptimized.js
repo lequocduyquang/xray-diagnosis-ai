@@ -196,12 +196,45 @@ async function analyzeGPT4oWithRetry(imageUrl, clinical_info, analysis_type, tim
  */
 async function getProfessorOpinionWithTimeout(imageUrl, onnxDiagnosis, gpt4oDiagnosis, clinical_info, timeoutMs) {
   try {
-    return await Promise.race([
+    // Get Professor AI opinion
+    const professorResult = await Promise.race([
       getSecondOpinion(imageUrl, onnxDiagnosis, gpt4oDiagnosis, clinical_info),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error(`Professor AI timeout after ${timeoutMs}ms`)), timeoutMs)
       )
     ]);
+
+    // 🚨 CRITICAL MEDICAL SAFETY CHECK: Validate Professor AI decision
+    if (professorResult?.success && professorResult.expert_opinion) {
+      const professorDiagnosis = professorResult.expert_opinion.final_expert_diagnosis;
+      const professorConfidence = professorResult.expert_opinion.confidence;
+
+      // ⚠️ DANGEROUS FALSE NEGATIVE CHECK: ONNX detected pneumonia but Professor says Normal
+      if (onnxDiagnosis && onnxDiagnosis.toLowerCase().includes('pneumonia') &&
+        professorDiagnosis && professorDiagnosis.toLowerCase().includes('normal')) {
+
+        console.log('🚨 MEDICAL SAFETY ALERT: Potential dangerous false negative detected!');
+        console.log(`ONNX: ${onnxDiagnosis} vs Professor: ${professorDiagnosis}`);
+
+        // Add critical safety warning to Professor result
+        professorResult.expert_opinion.safety_alert = {
+          detected: true,
+          type: "potential_false_negative",
+          risk_level: "CRITICAL",
+          message: "Professor AI diagnosed Normal while ONNX detected Pneumonia - requires urgent medical review",
+          recommendation: "Consider ONNX diagnosis for patient safety - pneumonia in children can be life-threatening"
+        };
+
+        // Reduce Professor confidence for safety and add warning
+        professorResult.expert_opinion.confidence = Math.min(professorConfidence, 0.6);
+        professorResult.expert_opinion.safety_adjusted = true;
+        professorResult.expert_opinion.original_confidence = professorConfidence;
+
+        console.log('🩺 Professor AI confidence reduced for medical safety');
+      }
+    }
+
+    return professorResult;
   } catch (error) {
     console.error('⚠️ Professor AI failed:', error.message);
     return {
@@ -555,9 +588,20 @@ function updateProbabilities(originalProbs, finalDiagnosis, finalConfidence) {
 function generateWarnings(originalWarnings, isDangerous, decisionMaker, professorResult) {
   const warnings = [...(originalWarnings || [])];
 
+  // 🚨 CRITICAL SAFETY ALERT: Check for medical safety warnings
+  if (professorResult?.expert_opinion?.safety_alert?.detected) {
+    const alert = professorResult.expert_opinion.safety_alert;
+    warnings.unshift(`🚨 MEDICAL SAFETY ALERT: ${alert.message}`);
+    warnings.push(`⚠️ ${alert.recommendation}`);
+  }
+
   if (isDangerous) {
     if (professorResult?.success) {
-      warnings.push(`🩺 Professor AI resolved dangerous disagreement`);
+      if (professorResult?.expert_opinion?.safety_adjusted) {
+        warnings.push(`🩺 Professor AI decision adjusted for medical safety`);
+      } else {
+        warnings.push(`🩺 Professor AI resolved dangerous disagreement`);
+      }
     } else {
       warnings.push(`⚠️ Dangerous disagreement detected - ${decisionMaker} decision used`);
     }
@@ -567,5 +611,3 @@ function generateWarnings(originalWarnings, isDangerous, decisionMaker, professo
 
   return warnings;
 }
-
-export { analyzeXrayOptimized }; 

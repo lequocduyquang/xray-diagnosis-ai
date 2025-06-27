@@ -4,7 +4,9 @@ import dotenv from "dotenv";
 import {
   analyzeXray,
 } from "../controllers/imageControllers.js";
-import { analyzeXrayOptimized } from "../controllers/imageControllersOptimized.js";
+import {
+  analyzeXrayOptimized
+} from "../controllers/imageControllersOptimized.js";
 import { getImageByCloudinaryId } from "../services/databaseService.js";
 import { handleDicomFile, validateOpenAIKey, validateClinicalInfo, upload } from "../middleware/index.js";
 
