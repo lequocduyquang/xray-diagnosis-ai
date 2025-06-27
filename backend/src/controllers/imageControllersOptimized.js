@@ -611,3 +611,14 @@ function generateWarnings(originalWarnings, isDangerous, decisionMaker, professo
 
   return warnings;
 }
+
+/**
+ * Get agreement level between AI models
+ */
+function getAgreementLevel(onnxConfidence, gpt4oConfidence) {
+  const confidenceDiff = Math.abs(onnxConfidence - gpt4oConfidence);
+
+  if (confidenceDiff < 0.2) return "high";
+  if (confidenceDiff < 0.5) return "medium";
+  return "low";
+}
