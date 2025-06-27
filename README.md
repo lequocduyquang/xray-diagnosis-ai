@@ -52,7 +52,7 @@
 
 ### **Binary Classification (Normal vs Pneumonia)**
 ```
-ResNet50 V1 (Adult-tuned, Weight: 0.4) + ResNet50 V2 (Pediatric, Weight: 0.6)
+ResNet50 V1 (Kid-tuned, Weight: 0.4) + ResNet50 V2 (Pediatric, Weight: 0.6)
                                     ↓
                             Weighted Ensemble → Binary Result
 ```

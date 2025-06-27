@@ -88,7 +88,7 @@ Frontend Upload
 ```
 ┌─────────────────┐    ┌─────────────────┐
 │   ResNet50 V1   │    │   ResNet50 V2   │
-│   (Adult-tuned) │    │  (Pediatric)    │
+│   (Kid-tuned) │    │  (Pediatric)    │
 │   Weight: 0.4   │    │   Weight: 0.6   │
 └─────────────────┘    └─────────────────┘
          │                       │
@@ -240,7 +240,7 @@ const MEMORY_THRESHOLDS = {
 ### **Model Weights**
 ```javascript
 const MODEL_WEIGHTS = {
-  RESNET_V1: 0.4,  // Adult-focused
+  RESNET_V1: 0.4,  // Kid-focused
   RESNET_V2: 0.6,  // Pediatric-focused
 };
 ```

@@ -3,7 +3,7 @@
           v
 +------------------------+
 | Run song song:         |
-|  - ResNet50 v1 (adult) |
+|  - ResNet50 v1 (kid) |
 |  - ResNet50 v2 (child) |
 +------------------------+
           |
