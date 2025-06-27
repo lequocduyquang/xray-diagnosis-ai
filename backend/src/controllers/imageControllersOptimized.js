@@ -14,6 +14,7 @@ import { getAgreementLevel, checkDangerousDisagreement } from "../utils/calculat
  * OPTIMIZED API xử lý ảnh X-ray với nhiều cải tiến performance
  * 🚀 Performance Features:
  * - Parallel execution của ONNX + GPT-4o
+ * - Smart fallback strategies (ONNX fails → GPT-4o primary, GPT-4o fails → ONNX only)
  * - Timeout protection
  * - Early termination logic
  * - Retry mechanisms
@@ -52,20 +53,31 @@ export async function analyzeXrayOptimized(req, res) {
     // Run ONNX and GPT-4o in parallel instead of sequential
     console.log('⚡ Running ONNX + GPT-4o in parallel...');
     const [onnxResult, gpt4oResult] = await Promise.allSettled([
-      analyzeXrayImageWithTimeout(imagePath, clinical_info, cloudinaryId, 15000),
-      analyzeGPT4oWithRetry(imageUrl, clinical_info, 'pediatric_xray', 20000)
+      analyzeXrayImageWithTimeout(imagePath, clinical_info, cloudinaryId, 60000),
+      analyzeGPT4oWithRetry(imageUrl, clinical_info, 'pediatric_xray', 60000)
     ]);
 
-    // 🔧 OPTIMIZATION 4: Handle Results with Early Exit
+    // 🔧 OPTIMIZATION 4: Handle Results with Smart Fallback Strategy
     const onnxData = onnxResult.status === 'fulfilled' ? onnxResult.value : null;
     const gpt4oData = gpt4oResult.status === 'fulfilled' ? gpt4oResult.value : null;
 
+    // 🚀 SMART FALLBACK LOGIC
     if (!onnxData || !onnxData.success) {
-      return res.status(500).json({
-        error: "ONNX models analysis failed",
-        details: onnxData?.error || onnxResult.reason?.message,
-        performance_metrics: { total_processing_time: Date.now() - startTime }
-      });
+      if (!gpt4oData || !gpt4oData.success) {
+        // Both failed - critical error
+        return res.status(500).json({
+          error: "Both ONNX and GPT-4o analysis failed",
+          details: {
+            onnx_error: onnxData?.error || onnxResult.reason?.message,
+            gpt4o_error: gpt4oData?.error || gpt4oResult.reason?.message
+          },
+          performance_metrics: { total_processing_time: Date.now() - startTime }
+        });
+      } else {
+        // ONNX failed, GPT-4o succeeded - use GPT-4o as primary
+        console.warn('⚠️ ONNX models failed, using GPT-4o as primary source');
+        return handleGPT4oOnlyMode(gpt4oData, startTime, res);
+      }
     }
 
     if (!gpt4oData || !gpt4oData.success) {
@@ -242,6 +254,107 @@ function handleOnnxOnlyMode(onnxData, startTime, res) {
           total_processing_time: Date.now() - startTime,
           fallback_mode: true,
           optimization_applied: true
+        }
+      }
+    }
+  };
+
+  return res.json(response);
+}
+
+/**
+ * Handle GPT-4o-only fallback mode (when ONNX models fail)
+ */
+function handleGPT4oOnlyMode(gpt4oData, startTime, res) {
+  const gptAnalysis = gpt4oData.analysis;
+
+  // Convert GPT-4o analysis to standard format
+  const diagnosis = gptAnalysis?.diagnosis || "Unknown";
+  const confidence = gptAnalysis?.confidence || 0.5;
+
+  // Create binary probabilities based on GPT-4o diagnosis
+  const binaryProbabilities = {};
+  if (diagnosis.toLowerCase().includes('normal')) {
+    binaryProbabilities.Normal = confidence;
+    binaryProbabilities.Pneumonia = 1 - confidence;
+  } else {
+    binaryProbabilities.Normal = 1 - confidence;
+    binaryProbabilities.Pneumonia = confidence;
+  }
+
+  const response = {
+    success: true,
+    stage: "gpt4o_only_mode",
+    message: "GPT-4o-only analysis (ONNX models unavailable)",
+    data: {
+      clinical_info: {},
+      binaryProbabilities: binaryProbabilities,
+      predictedClass: diagnosis,
+      confidence: confidence,
+      classLabels: VALID_LABELS,
+      multiLabelTop: {
+        [diagnosis]: {
+          label: diagnosis,
+          confidence: confidence,
+          source: "GPT-4o"
+        }
+      },
+      allMultiLabelScores: [],
+      warnings: [
+        "⚠️ ONNX models unavailable - GPT-4o analysis only",
+        "🧠 GPT-4o serving as primary diagnostic AI",
+        "⚡ Optimized fallback mode activated"
+      ],
+      cloudinaryId: null,
+      modelName: "GPT-4o-Only-Fallback",
+
+      enhanced_analysis: {
+        system_type: "GPT-4o-Only-Fallback",
+        optimization_features: [
+          "gpt4o_primary_fallback",
+          "timeout_protection",
+          "retry_logic"
+        ],
+        models_used: ['GPT-4o'],
+
+        onnx_analysis: {
+          status: "failed",
+          error: "ONNX models unavailable"
+        },
+
+        gpt4o_analysis: {
+          diagnosis: gptAnalysis?.diagnosis,
+          confidence: gptAnalysis?.confidence || 0,
+          findings: gptAnalysis?.key_findings,
+          reasoning: gptAnalysis?.medical_analysis,
+          recommendations: gptAnalysis?.recommendations
+        },
+
+        ai_agreement: {
+          disagreement_detected: false,
+          reason: "Only GPT-4o available for analysis"
+        },
+
+        professor_analysis: {
+          triggered: false,
+          reason: "No disagreement to resolve"
+        },
+
+        final_decision: {
+          diagnosis: diagnosis,
+          confidence: confidence,
+          decision_maker: "GPT-4o (ONNX fallback)",
+          reasoning: `GPT-4o analysis used as primary source due to ONNX failure`
+        },
+
+        performance_metrics: {
+          total_processing_time: Date.now() - startTime,
+          optimization_applied: true,
+          fallback_mode: "gpt4o_primary",
+          onnx_status: "failed",
+          gpt4o_cost_usd: gptAnalysis?.analysis_metadata?.cost_estimate_usd || 0,
+          professor_cost_usd: 0,
+          total_cost_usd: gptAnalysis?.analysis_metadata?.cost_estimate_usd || 0
         }
       }
     }
