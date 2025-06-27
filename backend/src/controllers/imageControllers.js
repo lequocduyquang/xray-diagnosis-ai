@@ -3,7 +3,6 @@ import {
   analyzeXrayWithGPT4o,
   compareAndSynthesizeResults,
   getSecondOpinion,
-  healthCheck
 } from "../services/gpt.js";
 import { VALID_LABELS } from '../constants.js';
 import {
@@ -407,103 +406,6 @@ export async function analyzeXray(req, res) {
     res.status(500).json({
       error: "Đã xảy ra lỗi khi phân tích ảnh X-ray!",
       details: err.message
-    });
-  }
-}
-
-/**
- * API chỉ chạy GPT-4o analysis (cho testing và so sánh)
- * @param {object} req - Request object
- * @param {object} res - Response object
- */
-export async function analyzeXrayGPT4oOnly(req, res) {
-  try {
-    const imagePath = req.file?.path;
-    if (!imagePath) {
-      return res.status(400).json({ error: "Không tìm thấy file ảnh!" });
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(400).json({
-        error: "OPENAI_API_KEY không được cấu hình!"
-      });
-    }
-
-    const imageUrl = req.file?.cloudinaryUrl || imagePath;
-
-    let clinical_info = {};
-    if (req.body.clinical_info) {
-      try {
-        clinical_info = JSON.parse(req.body.clinical_info);
-      } catch (err) {
-        return res.status(400).json({ error: "clinical_info phải là JSON hợp lệ!" });
-      }
-    }
-
-    console.log('🧠 GPT-4o only analysis started...');
-
-    const gpt4oResult = await analyzeXrayWithGPT4o(
-      imageUrl,
-      clinical_info,
-      'pediatric_xray'
-    );
-
-    // Standardized response format for GPT-4o only
-    res.json({
-      success: true,
-      stage: "gpt4o_analysis_completed",
-      message: "GPT-4o analysis completed successfully",
-      data: {
-        analysis_type: 'gpt4o_only',
-        modelName: 'GPT-4o-Vision',
-        timestamp: new Date().toISOString(),
-
-        // Main GPT-4o results
-        gpt4o_analysis: gpt4oResult.analysis,
-
-        // Performance metrics
-        performance_metrics: {
-          cost_usd: gpt4oResult.analysis?.analysis_metadata?.cost_estimate_usd || 0,
-          tokens_used: gpt4oResult.usage?.total_tokens || 0,
-          response_time_ms: gpt4oResult.analysis?.analysis_metadata?.response_time_ms || 0
-        },
-
-        // Raw response (for debugging)
-        raw_response: gpt4oResult
-      }
-    });
-
-  } catch (err) {
-    console.error("❌ Lỗi GPT-4o analysis:", err);
-    res.status(500).json({
-      error: "Đã xảy ra lỗi khi phân tích ảnh với GPT-4o!",
-      details: err.message
-    });
-  }
-}
-
-/**
- * Health check API cho OpenAI service
- * @param {object} req - Request object
- * @param {object} res - Response object
- */
-export async function gpt4oHealthCheck(req, res) {
-  try {
-    const healthStatus = await healthCheck();
-
-    res.json({
-      service: 'GPT-4o Medical Analysis',
-      ...healthStatus,
-      recommendations: healthStatus.status === 'healthy'
-        ? ['Service is ready for medical analysis']
-        : ['Check OpenAI API key', 'Verify network connectivity', 'Check API quotas']
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      service: 'GPT-4o Medical Analysis',
-      status: 'error',
-      error: err.message
     });
   }
 }

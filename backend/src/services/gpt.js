@@ -82,7 +82,7 @@ BẮT BUỘC: Trả lời CHÍNH XÁC theo JSON format:
 - LUÔN ƯU TIÊN: Sức khỏe và an toàn của bệnh nhi`,
 
   clinical_correlation: `Dựa trên ảnh X-quang và thông tin lâm sàng, hãy đưa ra phân tích tổng hợp...`,
-  
+
   second_opinion: `🩺 BẠN LÀ GIÁO SƯ X-QUANG NHI với 25 năm kinh nghiệm, được mời để SECOND OPINION trong trường hợp có sự KHÔNG NHẤT QUÁN giữa các AI models.
 
 ⚠️ TÌNH HUỐNG NGHIÊM TRỌNG: 
@@ -126,7 +126,7 @@ BẮT BUỘC: Trả lời theo JSON format sau:
 export async function analyzeXrayWithGPT4o(imageUrl, clinical_info = {}, analysis_type = 'pediatric_xray') {
   try {
     console.log('🔍 Starting GPT-4o X-ray analysis...');
-    
+
     // Chuẩn bị dữ liệu ảnh (giữ nguyên logic)
     let imageData;
     if (imageUrl.startsWith('data:image')) {
@@ -179,14 +179,14 @@ Tiền sử: ${clinical_info.history || 'Không rõ'}`;
     try {
       // Xử lý JSON parsing với multiple fallback strategies
       let parsedResponse;
-      
+
       // Strategy 1: Parse trực tiếp
       try {
         parsedResponse = JSON.parse(aiResponse);
         console.log('✅ JSON parsed successfully - Direct parse');
       } catch (directParseError) {
         console.log('⚠️ Direct parse failed, trying extraction...');
-        
+
         // Strategy 2: Extract JSON từ text (có thể có text wrapper)
         const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -199,7 +199,7 @@ Tiền sử: ${clinical_info.history || 'Không rõ'}`;
             .replace(/\s*```$/, '')      // Remove ``` suffix
             .replace(/^```\s*/, '')      // Remove ``` prefix
             .replace(/\s*```$/, '');     // Remove ``` suffix again
-          
+
           parsedResponse = JSON.parse(cleanResponse);
           console.log('✅ JSON parsed successfully - Cleaned response');
         }
@@ -223,20 +223,20 @@ Tiền sử: ${clinical_info.history || 'Không rõ'}`;
       };
 
       return { success: true, analysis: parsedResponse, usage: response.usage };
-      
+
     } catch (parseError) {
       console.error('❌ All JSON parsing strategies failed:', parseError.message);
       console.log('📝 Raw response for debugging:', aiResponse.substring(0, 500) + '...');
-      
+
       // Fallback: Cấu trúc response từ raw text
       const fallbackResponse = createFallbackResponse(aiResponse);
-      
-      return { 
-        success: false, 
-        error: 'JSON Parse Error - using fallback', 
+
+      return {
+        success: false,
+        error: 'JSON Parse Error - using fallback',
         analysis: fallbackResponse,
-        raw_response: aiResponse, 
-        usage: response.usage 
+        raw_response: aiResponse,
+        usage: response.usage
       };
     }
   } catch (error) {
@@ -292,10 +292,10 @@ QUY TẮC NGHIÊM NGẶT:
       max_tokens: 1500,
       temperature: 0.1
     });
-    
+
     const rawSynthesis = response.choices[0].message.content;
     let parsedSynthesis;
-    
+
     try {
       parsedSynthesis = JSON.parse(rawSynthesis);
     } catch (parseError) {
@@ -405,7 +405,7 @@ function createFallbackResponse(rawResponse) {
   // Cố gắng extract diagnosis từ raw text
   const diagnosisKeywords = {
     'normal': 'Normal',
-    'pneumonia': 'Pneumonia', 
+    'pneumonia': 'Pneumonia',
     'bronchitis': 'Bronchitis',
     'viêm phổi': 'Pneumonia',
     'bình thường': 'Normal'
@@ -428,14 +428,14 @@ function createFallbackResponse(rawResponse) {
  */
 function calculateCostEstimate(usage) {
   if (!usage) return 0;
-  
+
   // UPDATED: Giá của GPT-4o (tính đến tháng 6/2025) - Rẻ hơn 50% so với GPT-4 Turbo
   const INPUT_COST_PER_1K_TOKENS = 0.005;  // $5.00 / 1 triệu tokens
   const OUTPUT_COST_PER_1K_TOKENS = 0.015; // $15.00 / 1 triệu tokens
-  
+
   const inputCost = (usage.prompt_tokens || 0) / 1000 * INPUT_COST_PER_1K_TOKENS;
   const outputCost = (usage.completion_tokens || 0) / 1000 * OUTPUT_COST_PER_1K_TOKENS;
-  
+
   return Number((inputCost + outputCost).toFixed(5));
 }
 
@@ -456,7 +456,7 @@ export async function getSecondOpinion(imageUrl, onnxDiagnosis, gpt4oDiagnosis, 
   try {
     console.log('🩺 Getting expert second opinion for disagreement...');
     console.log(`📊 ONNX: ${onnxDiagnosis} vs GPT-4o: ${gpt4oDiagnosis}`);
-    
+
     // Chuẩn bị dữ liệu ảnh
     let imageData;
     if (imageUrl.startsWith('data:image')) {
@@ -563,15 +563,74 @@ Chẩn đoán ban đầu: ${clinical_info.initial_diagnosis || 'Unknown'}`;
 }
 
 export async function healthCheck() {
+  const startTime = Date.now();
+
   try {
+    console.log('🔍 Checking ChatGPT health...');
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [{ role: "user", content: "Hello, are you working?" }],
-      max_tokens: 10
+      messages: [{
+        role: "user",
+        content: "Respond with exactly 'HEALTHY' if you are working properly."
+      }],
+      max_tokens: 5,
+      temperature: 0
     });
-    return { status: 'healthy', api_key_valid: true, timestamp: new Date().toISOString() };
+
+    const content = response.choices[0].message.content.trim();
+    const responseTime = Date.now() - startTime;
+    const tokensUsed = response.usage?.total_tokens || 0;
+    const estimatedCost = (tokensUsed / 1000) * 0.005;
+
+    if (content.includes('HEALTHY')) {
+      console.log('✅ ChatGPT is healthy');
+      return {
+        status: 'healthy',
+        api_key_valid: true,
+        response_time_ms: responseTime,
+        tokens_used: tokensUsed,
+        cost_usd: parseFloat(estimatedCost.toFixed(6)),
+        chatgpt_response: content,
+        ready_for_medical_analysis: true,
+        timestamp: new Date().toISOString()
+      };
+    } else {
+      console.log('⚠️ ChatGPT response unexpected:', content);
+      return {
+        status: 'degraded',
+        api_key_valid: true,
+        response_time_ms: responseTime,
+        issue: 'Unexpected response from ChatGPT',
+        chatgpt_response: content,
+        ready_for_medical_analysis: false,
+        timestamp: new Date().toISOString()
+      };
+    }
+
   } catch (error) {
-    return { status: 'unhealthy', error: error.message, api_key_valid: false, timestamp: new Date().toISOString() };
+    const responseTime = Date.now() - startTime;
+    console.error('❌ ChatGPT health check failed:', error.message);
+
+    // Simple error classification
+    let errorType = 'unknown';
+    if (error.message.includes('API key') || error.message.includes('Unauthorized')) {
+      errorType = 'invalid_api_key';
+    } else if (error.message.includes('quota') || error.message.includes('exceeded')) {
+      errorType = 'quota_exceeded';
+    } else if (error.message.includes('timeout') || error.message.includes('network')) {
+      errorType = 'network_issue';
+    }
+
+    return {
+      status: 'unhealthy',
+      error: error.message,
+      error_type: errorType,
+      api_key_valid: errorType !== 'invalid_api_key',
+      response_time_ms: responseTime,
+      ready_for_medical_analysis: false,
+      timestamp: new Date().toISOString()
+    };
   }
 }
 

@@ -2,11 +2,11 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import imageRoutes from "./routes/imageRoutes.js";
+import healthcheckRoutes from "./routes/healthcheck.js";
 import { initializeDatabase } from "./config/database.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
-import { ensureModelDownloaded } from "./services/huggingfaceService.js";
 
 dotenv.config();
 
@@ -35,6 +35,7 @@ app.get("/health", (req, res) => {
 });
 
 app.use("/api", imageRoutes);
+app.use("/api/health", healthcheckRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -43,11 +44,6 @@ async function startServer() {
   try {
     // Khởi tạo database
     await initializeDatabase();
-
-    // Đảm bảo models đã được tải về
-    // await ensureModelDownloaded("resnetV1");
-    // await ensureModelDownloaded("resnetV2");
-    // await ensureModelDownloaded("densenet");
 
     // Khởi động server
     app.listen(PORT, () => {
