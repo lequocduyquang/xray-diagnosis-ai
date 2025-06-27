@@ -5,11 +5,9 @@ import dotenv from "dotenv";
 import {
   analyzeXray,
 } from "../controllers/imageControllers.js";
-import { dicomToPng } from "../utils/imageProcessing.js";
 import { getImageByCloudinaryId } from "../services/databaseService.js";
-import fs from "fs/promises";
-import path from "path";
 import { uploadsDir } from "../index.js";
+import { handleDicomFile, validateOpenAIKey, validateClinicalInfo } from "../middleware/index.js";
 
 dotenv.config();
 
@@ -34,102 +32,18 @@ const upload = multer({ storage });
 
 const router = express.Router();
 
-// Middleware xử lý file DICOM
-const handleDicomFile = async (req, res, next) => {
-  if (!req.file) {
-    console.log("Không tìm thấy file để xử lý.");
-    return res.status(400).json({ error: "Không tìm thấy file để upload!" });
-  }
 
-  const filePath = req.file.path; // Đường dẫn file tạm thời
-  const fileExtension = path.extname(filePath).toLowerCase();
-
-  console.log(`Đang kiểm tra file: ${filePath}`);
-  console.log(`Phần mở rộng file: ${fileExtension}`);
-
-  if (fileExtension === ".dcm" || fileExtension === ".dicom") {
-    try {
-      console.log("Đang xử lý file DICOM...");
-      // Chuyển đổi DICOM sang PNG
-      const convertedPath = await dicomToPng(filePath);
-
-      console.log(`Đã chuyển DICOM sang PNG: ${convertedPath}`);
-
-      // Upload file PNG đã chuyển đổi lên Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(convertedPath, {
-        folder: "xray-images",
-        use_filename: true,
-        unique_filename: false,
-        resource_type: "image", // Đảm bảo Cloudinary xử lý file PNG như ảnh
-      });
-
-      console.log(`Đã upload PNG lên Cloudinary: ${uploadResult.secure_url}`);
-
-      // Cập nhật thông tin file trong req.file
-      req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
-      req.file.mimetype = "image/png"; // MIME type của file PNG
-      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
-
-      // Xóa file PNG tạm thời sau khi upload
-      await fs.unlink(convertedPath);
-      // Xóa file DICOM tạm thời
-      await fs.unlink(filePath);
-    } catch (error) {
-      console.error(`Lỗi khi xử lý file DICOM: ${JSON.stringify(error)}`);
-      return res.status(500).json({ error: "Lỗi khi xử lý file DICOM!" });
-    }
-  } else {
-    try {
-      console.log(
-        "File không phải là DICOM, upload trực tiếp lên Cloudinary..."
-      );
-      // Upload file PNG/JPEG trực tiếp lên Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(filePath, {
-        folder: "xray-images",
-        use_filename: true,
-        unique_filename: false,
-        resource_type: "image", // Đảm bảo Cloudinary xử lý file PNG/JPEG như ảnh
-      });
-
-      console.log(`Đã upload file lên Cloudinary: ${uploadResult.secure_url}`);
-
-      // Cập nhật thông tin file trong req.file
-      req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
-      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
-
-      // Xóa file tạm thời sau khi upload
-      await fs.unlink(filePath);
-    } catch (error) {
-      console.error(`Lỗi khi upload file: ${JSON.stringify(error)}`);
-      return res.status(500).json({ error: "Lỗi khi upload file!" });
-    }
-  }
-
-  next();
-};
-
-// Middleware kiểm tra OpenAI API key (chỉ cho các endpoint cần GPT-4o)
-const validateOpenAIKey = (req, res, next) => {
-  const enableGPT4o = req.query.enable_gpt4o === 'true' ||
-    req.body.enable_gpt4o === true ||
-    req.body.enable_gpt4o === 'true';
-
-  // Chỉ kiểm tra nếu GPT-4o được enable hoặc là endpoint GPT-4o only
-  if (enableGPT4o || req.originalUrl.includes('gpt4o')) {
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(400).json({
-        error: "OPENAI_API_KEY không được cấu hình! Vui lòng thêm vào file .env",
-        suggestion: "Thêm OPENAI_API_KEY=your_api_key_here vào file .env"
-      });
-    }
-  }
-  next();
-};
 
 // ==================== MAIN ROUTES ====================
 
-// Route phân tích ảnh X-ray (ONNX models + GPT-4o tùy chọn)
-router.post("/analyze", upload.single("image"), handleDicomFile, validateOpenAIKey, analyzeXray);
+// Route phân tích ảnh X-ray (3-AI Hybrid System)
+router.post("/analyze",
+  upload.single("image"),
+  handleDicomFile,
+  validateOpenAIKey,
+  validateClinicalInfo,
+  analyzeXray
+);
 
 // Route lấy thông tin ảnh theo cloudinary_id
 router.get("/image/:cloudinaryId", async (req, res) => {
