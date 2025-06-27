@@ -20,6 +20,79 @@ const multiLabelNames = [
   "Pneumonia",
 ];
 
+// Memory management for ONNX sessions
+let sessionCache = {};
+let lastCleanup = Date.now();
+const CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const MAX_SESSIONS = 3; // Limit concurrent sessions
+
+// Force cleanup sessions to free memory
+function forceCleanupSessions() {
+  console.log('🧹 Force cleaning up ONNX sessions...');
+  Object.keys(sessionCache).forEach(key => {
+    try {
+      if (sessionCache[key]?.session) {
+        sessionCache[key].session.release?.();
+      }
+    } catch (e) {
+      console.warn(`Warning releasing session ${key}:`, e.message);
+    }
+  });
+  sessionCache = {};
+
+  // Force garbage collection if available
+  if (global.gc) {
+    global.gc();
+    console.log('🗑️ Forced garbage collection');
+  }
+
+  lastCleanup = Date.now();
+}
+
+// Get or create session with memory management
+async function getOrCreateSession(modelPath, modelType) {
+  const now = Date.now();
+
+  // Force cleanup if too long since last cleanup or too many sessions
+  if (now - lastCleanup > CLEANUP_INTERVAL || Object.keys(sessionCache).length >= MAX_SESSIONS) {
+    forceCleanupSessions();
+  }
+
+  const cacheKey = `${modelType}_${modelPath}`;
+
+  if (sessionCache[cacheKey] && sessionCache[cacheKey].session) {
+    sessionCache[cacheKey].lastUsed = now;
+    return sessionCache[cacheKey].session;
+  }
+
+  try {
+    console.log(`📥 Loading ONNX session: ${modelType}`);
+
+    // Create session with memory optimization settings
+    const sessionOptions = {
+      executionProviders: ['cpu'],
+      graphOptimizationLevel: 'basic', // Reduce memory usage
+      enableMemPattern: false,
+      enableCpuMemArena: false,
+    };
+
+    const session = await ort.InferenceSession.create(modelPath, sessionOptions);
+
+    sessionCache[cacheKey] = {
+      session,
+      lastUsed: now,
+      modelType
+    };
+
+    console.log(`✅ Session loaded: ${modelType}, Cache size: ${Object.keys(sessionCache).length}`);
+    return session;
+
+  } catch (error) {
+    console.error(`❌ Failed to create session for ${modelType}:`, error);
+    throw error;
+  }
+}
+
 /**
  * Điều chỉnh xác suất dựa trên thông tin lâm sàng, chỉ cho binary labels
  * @param {Object} probs Xác suất từ AI (Normal, Pneumonia)
@@ -103,11 +176,28 @@ function adjust_probabilities(
  * @param {string} cloudinaryId ID của ảnh trên Cloudinary (optional)
  * @returns {Promise<any>}
  */
+// Memory monitoring helper
+function logMemoryUsage(stage) {
+  const used = process.memoryUsage();
+  const mb = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  console.log(`📊 [${stage}] Memory: RSS=${mb(used.rss)}MB, Heap=${mb(used.heapUsed)}/${mb(used.heapTotal)}MB`);
+
+  // Warning if memory usage is high
+  if (mb(used.heapUsed) > 400) {
+    console.warn(`⚠️ HIGH MEMORY WARNING: ${mb(used.heapUsed)}MB used`);
+    // Force cleanup if memory is very high
+    if (mb(used.heapUsed) > 450) {
+      forceCleanupSessions();
+    }
+  }
+}
+
 export async function analyzeXrayImage(
   filePathOrUrl,
   clinical_info = {},
   cloudinaryId = null
 ) {
+  logMemoryUsage('START');
   try {
     let fileBuffer;
 
@@ -124,7 +214,9 @@ export async function analyzeXrayImage(
       fileBuffer = await fs.readFile(filePathOrUrl);
     }
 
+    logMemoryUsage('BEFORE_PREPROCESSING');
     const inputTensor = await preprocessImage(fileBuffer);
+    logMemoryUsage('AFTER_PREPROCESSING');
 
     // // Đường dẫn tới model
     const modelPaths = {
@@ -146,11 +238,15 @@ export async function analyzeXrayImage(
     //   densenet: path.join(__dirname, "../ml-models-v2/densenet121.onnx"),
     // };
 
-    // Chạy song song ResNet50 V1 và V2
-    const [adult, child] = await Promise.all([
-      runBinaryClassifier(modelPaths.resnetV1, inputTensor),
-      runBinaryClassifier(modelPaths.resnetV2, inputTensor),
-    ]);
+    // 🚀 MEMORY OPTIMIZATION: Sequential instead of parallel to reduce memory peak
+    console.log('🔄 Running ResNet50 V1...');
+    logMemoryUsage('BEFORE_RESNET_V1');
+    const adult = await runBinaryClassifier(modelPaths.resnetV1, inputTensor);
+    logMemoryUsage('AFTER_RESNET_V1');
+
+    console.log('🔄 Running ResNet50 V2...');
+    const child = await runBinaryClassifier(modelPaths.resnetV2, inputTensor);
+    logMemoryUsage('AFTER_RESNET_V2');
 
     // Weighted Ensemble
     const w1 = 0.4; // ResNet50-v1
@@ -166,7 +262,7 @@ export async function analyzeXrayImage(
         avgProbs,
         clinical_info,
         binaryClassLabels[
-          Object.values(avgProbs).indexOf(Math.max(...Object.values(avgProbs)))
+        Object.values(avgProbs).indexOf(Math.max(...Object.values(avgProbs)))
         ]
       );
     const predictedIdx = Object.values(finalBinaryProbs).indexOf(
@@ -289,54 +385,98 @@ export async function analyzeXrayImage(
 // -------------------------------------
 
 async function runBinaryClassifier(modelPath, inputTensor) {
-  const session = await ort.InferenceSession.create(modelPath);
-  const feeds = { input: inputTensor };
-  const results = await session.run(feeds);
-  const logits = results.output.data;
-  const probabilities = softmax(logits);
-  return { probabilities };
+  let session = null;
+  try {
+    session = await getOrCreateSession(modelPath, 'binary');
+    const feeds = { input: inputTensor };
+    const results = await session.run(feeds);
+    const logits = results.output.data;
+    const probabilities = softmax(logits);
+    return { probabilities };
+  } catch (error) {
+    console.error('❌ Binary classifier error:', error);
+    // Cleanup on error
+    forceCleanupSessions();
+    throw error;
+  }
 }
 
 async function runMultiLabelClassifier(modelPath, inputTensor) {
-  const session = await ort.InferenceSession.create(modelPath);
-  const feeds = { input: inputTensor };
-  const results = await session.run(feeds);
-  const logits = results.output.data;
-  const probabilities = sigmoid(logits);
-  return probabilities;
+  let session = null;
+  try {
+    session = await getOrCreateSession(modelPath, 'multilabel');
+    const feeds = { input: inputTensor };
+    const results = await session.run(feeds);
+    const logits = results.output.data;
+    const probabilities = sigmoid(logits);
+    return probabilities;
+  } catch (error) {
+    console.error('❌ Multi-label classifier error:', error);
+    // Cleanup on error
+    forceCleanupSessions();
+    throw error;
+  }
 }
 
 async function preprocessImage(imageBuffer) {
-  const image = await Jimp.read(imageBuffer);
-  const targetWidth = 224;
-  const targetHeight = 224;
-  image.resize({
-    w: targetWidth,
-    h: targetHeight,
-  });
-  const pixels = image.bitmap.data;
+  let image = null;
+  try {
+    // Use smaller image size to reduce memory usage
+    const targetWidth = 160; // Reduced from 224
+    const targetHeight = 160; // Reduced from 224
 
-  const mean = [0.485, 0.456, 0.406];
-  const std = [0.229, 0.224, 0.225];
+    image = await Jimp.read(imageBuffer);
 
-  const tensorData = new Float32Array(3 * targetWidth * targetHeight);
-  for (let y = 0; y < targetHeight; y++) {
-    for (let x = 0; x < targetWidth; x++) {
-      const pixelIdx = (y * targetWidth + x) * 4;
-      const r = pixels[pixelIdx] / 255.0;
-      const g = pixels[pixelIdx + 1] / 255.0;
-      const b = pixels[pixelIdx + 2] / 255.0;
-      const idx = y * targetWidth + x;
-      tensorData[idx] = (r - mean[0]) / std[0];
-      tensorData[targetWidth * targetHeight + idx] = (g - mean[1]) / std[1];
-      tensorData[2 * targetWidth * targetHeight + idx] = (b - mean[2]) / std[2];
+    // Resize with memory optimization
+    image.resize({
+      w: targetWidth,
+      h: targetHeight,
+    });
+
+    const pixels = image.bitmap.data;
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+
+    const tensorData = new Float32Array(3 * targetWidth * targetHeight);
+
+    // Process pixels in smaller chunks to reduce memory pressure
+    const batchSize = targetWidth * 10; // Process 10 rows at a time
+
+    for (let startY = 0; startY < targetHeight; startY += 10) {
+      const endY = Math.min(startY + 10, targetHeight);
+
+      for (let y = startY; y < endY; y++) {
+        for (let x = 0; x < targetWidth; x++) {
+          const pixelIdx = (y * targetWidth + x) * 4;
+          const r = pixels[pixelIdx] / 255.0;
+          const g = pixels[pixelIdx + 1] / 255.0;
+          const b = pixels[pixelIdx + 2] / 255.0;
+          const idx = y * targetWidth + x;
+          tensorData[idx] = (r - mean[0]) / std[0];
+          tensorData[targetWidth * targetHeight + idx] = (g - mean[1]) / std[1];
+          tensorData[2 * targetWidth * targetHeight + idx] = (b - mean[2]) / std[2];
+        }
+      }
     }
-  }
 
-  return new ort.Tensor("float32", tensorData, [
-    1,
-    3,
-    targetHeight,
-    targetWidth,
-  ]);
+    // Clean up Jimp image
+    if (image) {
+      image = null;
+    }
+
+    return new ort.Tensor("float32", tensorData, [
+      1,
+      3,
+      targetHeight,
+      targetWidth,
+    ]);
+
+  } catch (error) {
+    console.error('❌ Image preprocessing error:', error);
+    // Clean up on error
+    if (image) {
+      image = null;
+    }
+    throw error;
+  }
 }
