@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { Jimp } from "jimp";
+import { Jimp, ResizeStrategy } from "jimp";
 import * as ort from "onnxruntime-node";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -265,7 +265,7 @@ export async function analyzeXrayImage(
       // Normal mode: Sequential processing of both models
       console.log('🔄 Running ResNet50 V1...');
       logMemoryUsage('BEFORE_RESNET_V1');
-      const adult = await runBinaryClassifier(modelPaths.resnetV1, inputTensor);
+      const kid = await runBinaryClassifier(modelPaths.resnetV1, inputTensor);
       logMemoryUsage('AFTER_RESNET_V1');
 
       console.log('🔄 Running ResNet50 V2...');
@@ -276,8 +276,8 @@ export async function analyzeXrayImage(
       const w1 = 0.4; // ResNet50-v1
       const w2 = 0.6; // ResNet50-v2
       avgProbs = {
-        Normal: adult.probabilities[0] * w1 + child.probabilities[0] * w2,
-        Pneumonia: adult.probabilities[1] * w1 + child.probabilities[1] * w2,
+        Normal: kid.probabilities[0] * w1 + child.probabilities[0] * w2,
+        Pneumonia: kid.probabilities[1] * w1 + child.probabilities[1] * w2,
       };
     }
 
@@ -527,10 +527,10 @@ async function preprocessImage(imageBuffer) {
     image = await Jimp.read(imageBuffer);
 
     // Resize with memory optimization - use faster but more memory-efficient method
-    image.resize(targetWidth, targetHeight, Jimp.RESIZE_BILINEAR); // Use bilinear for speed
+    image.resize({ w: targetWidth, h: targetHeight, mode: ResizeStrategy.BILINEAR });
 
     // Convert to grayscale if it's RGB to reduce memory by ~66%
-    if (image.bitmap.width * image.bitmap.height * 4 > 1024 * 1024) { // If > 1MB
+    if (image.bitmap.width * image.bitmap.height * 4 > 1024 * 1024) {
       console.log('🔄 Converting large image to grayscale for memory optimization');
       image.greyscale();
     }
