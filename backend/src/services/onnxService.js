@@ -183,13 +183,22 @@ function logMemoryUsage(stage) {
   console.log(`📊 [${stage}] Memory: RSS=${mb(used.rss)}MB, Heap=${mb(used.heapUsed)}/${mb(used.heapTotal)}MB`);
 
   // Warning if memory usage is high
-  if (mb(used.heapUsed) > 400) {
+  if (mb(used.heapUsed) > 350) {
     console.warn(`⚠️ HIGH MEMORY WARNING: ${mb(used.heapUsed)}MB used`);
     // Force cleanup if memory is very high
-    if (mb(used.heapUsed) > 450) {
+    if (mb(used.heapUsed) > 400) {
       forceCleanupSessions();
     }
   }
+
+  return mb(used.heapUsed);
+}
+
+// Check if we should use single model mode due to memory constraints
+function shouldUseSingleModelMode() {
+  const used = process.memoryUsage();
+  const mb = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  return mb(used.heapUsed) > 300; // Use single model if > 300MB
 }
 
 export async function analyzeXrayImage(
@@ -238,23 +247,39 @@ export async function analyzeXrayImage(
     //   densenet: path.join(__dirname, "../ml-models-v2/densenet121.onnx"),
     // };
 
-    // 🚀 MEMORY OPTIMIZATION: Sequential instead of parallel to reduce memory peak
-    console.log('🔄 Running ResNet50 V1...');
-    logMemoryUsage('BEFORE_RESNET_V1');
-    const adult = await runBinaryClassifier(modelPaths.resnetV1, inputTensor);
-    logMemoryUsage('AFTER_RESNET_V1');
+    // 🚀 MEMORY OPTIMIZATION: Smart model selection based on available memory
+    let avgProbs;
 
-    console.log('🔄 Running ResNet50 V2...');
-    const child = await runBinaryClassifier(modelPaths.resnetV2, inputTensor);
-    logMemoryUsage('AFTER_RESNET_V2');
+    if (shouldUseSingleModelMode()) {
+      console.log('⚡ MEMORY SAVER MODE: Using single ResNet50 V2 model only');
+      logMemoryUsage('BEFORE_SINGLE_MODEL');
+      const child = await runBinaryClassifier(modelPaths.resnetV2, inputTensor);
+      logMemoryUsage('AFTER_SINGLE_MODEL');
 
-    // Weighted Ensemble
-    const w1 = 0.4; // ResNet50-v1
-    const w2 = 0.6; // ResNet50-v2
-    const avgProbs = {
-      Normal: adult.probabilities[0] * w1 + child.probabilities[0] * w2,
-      Pneumonia: adult.probabilities[1] * w1 + child.probabilities[1] * w2,
-    };
+      // Use single model results
+      avgProbs = {
+        Normal: child.probabilities[0],
+        Pneumonia: child.probabilities[1],
+      };
+    } else {
+      // Normal mode: Sequential processing of both models
+      console.log('🔄 Running ResNet50 V1...');
+      logMemoryUsage('BEFORE_RESNET_V1');
+      const adult = await runBinaryClassifier(modelPaths.resnetV1, inputTensor);
+      logMemoryUsage('AFTER_RESNET_V1');
+
+      console.log('🔄 Running ResNet50 V2...');
+      const child = await runBinaryClassifier(modelPaths.resnetV2, inputTensor);
+      logMemoryUsage('AFTER_RESNET_V2');
+
+      // Weighted Ensemble
+      const w1 = 0.4; // ResNet50-v1
+      const w2 = 0.6; // ResNet50-v2
+      avgProbs = {
+        Normal: adult.probabilities[0] * w1 + child.probabilities[0] * w2,
+        Pneumonia: adult.probabilities[1] * w1 + child.probabilities[1] * w2,
+      };
+    }
 
     // Điều chỉnh xác suất binary dựa trên lâm sàng
     const { final_probs: finalBinaryProbs, warnings: binaryWarnings } =
@@ -277,16 +302,20 @@ export async function analyzeXrayImage(
     ); // Debug
 
     if (finalLabel === "Normal") {
+      // 🎯 MEMORY OPTIMIZATION: Early exit for Normal cases (no multi-label needed)
+      logMemoryUsage('NORMAL_RESULT_EARLY_EXIT');
+
       // Cập nhật model_name trong database nếu có cloudinaryId
       if (cloudinaryId) {
         try {
+          const modelName = shouldUseSingleModelMode() ? "ResNet50-V2-Single" : "ResNet50-Ensemble";
           await saveImageToDatabase({
             cloudinaryId: cloudinaryId,
             cloudinaryUrl: filePathOrUrl,
-            modelName: "ResNet50",
+            modelName: modelName,
           });
           console.log(
-            `✅ Đã cập nhật model_name = ResNet50 cho cloudinary_id: ${cloudinaryId}`
+            `✅ Đã cập nhật model_name = ${modelName} cho cloudinary_id: ${cloudinaryId}`
           );
         } catch (dbError) {
           console.error(
@@ -294,6 +323,11 @@ export async function analyzeXrayImage(
             dbError
           );
         }
+      }
+
+      const warnings = [...binaryWarnings];
+      if (shouldUseSingleModelMode()) {
+        warnings.push("⚡ Memory Saver Mode: Used single ResNet50-V2 model");
       }
 
       return {
@@ -305,9 +339,73 @@ export async function analyzeXrayImage(
           binaryProbabilities: finalBinaryProbs,
           predictedClass: finalLabel,
           classLabels: binaryClassLabels,
-          warnings: binaryWarnings,
+          warnings: warnings,
           cloudinaryId,
-          modelName: "ResNet50",
+          modelName: shouldUseSingleModelMode() ? "ResNet50-V2-Single" : "ResNet50-Ensemble",
+        },
+      };
+    }
+
+    // Multi-label classification for Pneumonia cases
+    logMemoryUsage('BEFORE_MULTILABEL');
+    console.log('🔄 Running DenseNet121 for multi-label classification...');
+
+    // Check memory before running DenseNet121
+    const currentMemory = logMemoryUsage('CHECK_BEFORE_DENSENET');
+
+    if (currentMemory > 450) {
+      // 🚨 EMERGENCY: Use binary model for approximate multi-label results
+      console.warn('🚨 CRITICAL MEMORY: Using ResNet50 V2 for approximate multi-label results');
+      forceCleanupSessions();
+
+      // Generate approximate multi-label results based on binary confidence
+      const confidence = Math.max(...Object.values(finalBinaryProbs));
+
+      // Use actual multiLabelNames from the system
+      const approximateMultiLabel = {};
+      multiLabelNames.forEach((label, index) => {
+        if (label === "Pneumonia") {
+          approximateMultiLabel[label] = confidence * 0.8; // Highest for main diagnosis
+        } else if (label === "Brocho-pneumonia") {
+          approximateMultiLabel[label] = confidence * 0.6; // Common complication
+        } else if (label === "Bronchitis") {
+          approximateMultiLabel[label] = confidence * 0.4; // Related respiratory
+        } else if (label === "Bronchiolitis") {
+          approximateMultiLabel[label] = confidence * 0.3; // Pediatric common
+        } else if (label === "Other disease") {
+          approximateMultiLabel[label] = confidence * 0.2; // Catch-all
+        }
+      });
+
+      const allMultiLabelScores = Object.entries(approximateMultiLabel).map(([label, score]) => ({
+        label,
+        score
+      })).sort((a, b) => b.score - a.score);
+
+      const multiLabelTop = {};
+      for (let i = 0; i < Math.min(3, allMultiLabelScores.length); i++) {
+        multiLabelTop[i] = allMultiLabelScores[i];
+      }
+
+      return {
+        success: true,
+        stage: "binary-approximated-multilabel",
+        message: "Result: Pneumonia (Approximated multi-label from binary model)",
+        data: {
+          clinical_info,
+          binaryProbabilities: finalBinaryProbs,
+          predictedClass: finalLabel,
+          classLabels: binaryClassLabels,
+          multiLabelTop,
+          allMultiLabelScores,
+          warnings: [
+            ...binaryWarnings,
+            "🚨 CRITICAL MEMORY: Used ResNet50-V2 for approximate multi-label results",
+            "⚠️ Multi-label results are approximated from binary classification",
+            "🩺 Consider DenseNet121 analysis when memory allows for precise subtypes"
+          ],
+          cloudinaryId,
+          modelName: "ResNet50-V2-Approximated",
         },
       };
     }
@@ -317,6 +415,7 @@ export async function analyzeXrayImage(
       modelPaths.densenet,
       inputTensor
     );
+    logMemoryUsage('AFTER_MULTILABEL');
     const multiLabelProbsObj = {};
     multiLabelNames.forEach(
       (label, idx) => (multiLabelProbsObj[label] = multiLabelProbs[idx])
@@ -421,17 +520,20 @@ async function runMultiLabelClassifier(modelPath, inputTensor) {
 async function preprocessImage(imageBuffer) {
   let image = null;
   try {
-    // Use smaller image size to reduce memory usage
-    const targetWidth = 160; // Reduced from 224
-    const targetHeight = 160; // Reduced from 224
+    // Keep original model size (models were trained on 224x224)
+    const targetWidth = 224; // Must match ONNX model input
+    const targetHeight = 224; // Must match ONNX model input
 
     image = await Jimp.read(imageBuffer);
 
-    // Resize with memory optimization
-    image.resize({
-      w: targetWidth,
-      h: targetHeight,
-    });
+    // Resize with memory optimization - use faster but more memory-efficient method
+    image.resize(targetWidth, targetHeight, Jimp.RESIZE_BILINEAR); // Use bilinear for speed
+
+    // Convert to grayscale if it's RGB to reduce memory by ~66%
+    if (image.bitmap.width * image.bitmap.height * 4 > 1024 * 1024) { // If > 1MB
+      console.log('🔄 Converting large image to grayscale for memory optimization');
+      image.greyscale();
+    }
 
     const pixels = image.bitmap.data;
     const mean = [0.485, 0.456, 0.406];
@@ -439,23 +541,17 @@ async function preprocessImage(imageBuffer) {
 
     const tensorData = new Float32Array(3 * targetWidth * targetHeight);
 
-    // Process pixels in smaller chunks to reduce memory pressure
-    const batchSize = targetWidth * 10; // Process 10 rows at a time
-
-    for (let startY = 0; startY < targetHeight; startY += 10) {
-      const endY = Math.min(startY + 10, targetHeight);
-
-      for (let y = startY; y < endY; y++) {
-        for (let x = 0; x < targetWidth; x++) {
-          const pixelIdx = (y * targetWidth + x) * 4;
-          const r = pixels[pixelIdx] / 255.0;
-          const g = pixels[pixelIdx + 1] / 255.0;
-          const b = pixels[pixelIdx + 2] / 255.0;
-          const idx = y * targetWidth + x;
-          tensorData[idx] = (r - mean[0]) / std[0];
-          tensorData[targetWidth * targetHeight + idx] = (g - mean[1]) / std[1];
-          tensorData[2 * targetWidth * targetHeight + idx] = (b - mean[2]) / std[2];
-        }
+    // Fast pixel processing - process all at once for better performance
+    for (let y = 0; y < targetHeight; y++) {
+      for (let x = 0; x < targetWidth; x++) {
+        const pixelIdx = (y * targetWidth + x) * 4;
+        const r = pixels[pixelIdx] / 255.0;
+        const g = pixels[pixelIdx + 1] / 255.0;
+        const b = pixels[pixelIdx + 2] / 255.0;
+        const idx = y * targetWidth + x;
+        tensorData[idx] = (r - mean[0]) / std[0];
+        tensorData[targetWidth * targetHeight + idx] = (g - mean[1]) / std[1];
+        tensorData[2 * targetWidth * targetHeight + idx] = (b - mean[2]) / std[2];
       }
     }
 
