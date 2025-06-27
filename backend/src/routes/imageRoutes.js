@@ -4,7 +4,6 @@ import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
 import {
   analyzeXray,
-  analyzeXrayGPT4oOnly,
 } from "../controllers/imageControllers.js";
 import { dicomToPng } from "../utils/imageProcessing.js";
 import { getImageByCloudinaryId } from "../services/databaseService.js";
@@ -131,9 +130,6 @@ const validateOpenAIKey = (req, res, next) => {
 
 // Route phân tích ảnh X-ray (ONNX models + GPT-4o tùy chọn)
 router.post("/analyze", upload.single("image"), handleDicomFile, validateOpenAIKey, analyzeXray);
-
-// Route chỉ chạy GPT-4o analysis (cho testing)
-router.post("/gpt4o-only", upload.single("image"), handleDicomFile, validateOpenAIKey, analyzeXrayGPT4oOnly);
 
 // Route lấy thông tin ảnh theo cloudinary_id
 router.get("/image/:cloudinaryId", async (req, res) => {
