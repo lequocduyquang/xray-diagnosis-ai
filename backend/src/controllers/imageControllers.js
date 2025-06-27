@@ -66,14 +66,6 @@ export async function analyzeXray(req, res) {
     // 🚀 ENHANCED: GPT-4o is now ALWAYS enabled for 3-AI system
     console.log(`🤖 3-AI Hybrid System: ONNX + GPT-4o + Professor AI`);
 
-    // Check OpenAI API key (required for new system)
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(400).json({
-        error: "OPENAI_API_KEY không được cấu hình! Hệ thống 3-AI cần GPT-4o để hoạt động.",
-        suggestion: "Thêm OPENAI_API_KEY=your_api_key_here vào file .env"
-      });
-    }
-
     // 1. Luôn chạy ONNX models trước (ResNet50 + DenseNet121)
     console.log('🔬 Running ONNX models analysis...');
     const onnxResult = await analyzeXrayImage(

@@ -1,13 +1,12 @@
 import express from "express";
-import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
 import {
   analyzeXray,
 } from "../controllers/imageControllers.js";
+import { analyzeXrayOptimized } from "../controllers/imageControllersOptimized.js";
 import { getImageByCloudinaryId } from "../services/databaseService.js";
-import { uploadsDir } from "../index.js";
-import { handleDicomFile, validateOpenAIKey, validateClinicalInfo } from "../middleware/index.js";
+import { handleDicomFile, validateOpenAIKey, validateClinicalInfo, upload } from "../middleware/index.js";
 
 dotenv.config();
 
@@ -18,21 +17,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Cấu hình Multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir); // Lưu file tạm thời vào thư mục "uploads"
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`); // Đặt tên file tạm thời
-  },
-});
-
-const upload = multer({ storage });
-
 const router = express.Router();
-
-
 
 // ==================== MAIN ROUTES ====================
 
@@ -43,6 +28,15 @@ router.post("/analyze",
   validateOpenAIKey,
   validateClinicalInfo,
   analyzeXray
+);
+
+// 🚀 OPTIMIZED Route phân tích ảnh X-ray (Performance Enhanced)
+router.post("/analyze-optimized",
+  upload.single("image"),
+  handleDicomFile,
+  validateOpenAIKey,
+  validateClinicalInfo,
+  analyzeXrayOptimized
 );
 
 // Route lấy thông tin ảnh theo cloudinary_id

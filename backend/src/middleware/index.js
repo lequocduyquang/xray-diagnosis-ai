@@ -1,7 +1,10 @@
 import path from "path";
-import fs from "fs/promises";
 import { v2 as cloudinary } from "cloudinary";
-import { dicomToPng } from "../utils/imageProcessing.js";
+import multer from "multer";
+import { fileURLToPath } from "url";
+import { uploadsDir } from "../index.js";
+
+const __filename = fileURLToPath(import.meta.url);
 
 /**
  * Middleware xử lý file DICOM và upload lên Cloudinary
@@ -10,78 +13,45 @@ import { dicomToPng } from "../utils/imageProcessing.js";
  * @param {function} next - Next middleware function
  */
 export const handleDicomFile = async (req, res, next) => {
-  if (!req.file) {
-    console.log("Không tìm thấy file để xử lý.");
-    return res.status(400).json({ error: "Không tìm thấy file để upload!" });
-  }
-
-  const filePath = req.file.path; // Đường dẫn file tạm thời
-  const fileExtension = path.extname(filePath).toLowerCase();
-
-  console.log(`Đang kiểm tra file: ${filePath}`);
-  console.log(`Phần mở rộng file: ${fileExtension}`);
-
-  if (fileExtension === ".dcm" || fileExtension === ".dicom") {
-    try {
-      console.log("Đang xử lý file DICOM...");
-      // Chuyển đổi DICOM sang PNG
-      const convertedPath = await dicomToPng(filePath);
-
-      console.log(`Đã chuyển DICOM sang PNG: ${convertedPath}`);
-
-      // Upload file PNG đã chuyển đổi lên Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(convertedPath, {
-        folder: "xray-images",
-        use_filename: true,
-        unique_filename: false,
-        resource_type: "image", // Đảm bảo Cloudinary xử lý file PNG như ảnh
-      });
-
-      console.log(`Đã upload PNG lên Cloudinary: ${uploadResult.secure_url}`);
-
-      // Cập nhật thông tin file trong req.file
-      req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
-      req.file.cloudinaryUrl = uploadResult.secure_url; // Add cloudinaryUrl
-      req.file.mimetype = "image/png"; // MIME type của file PNG
-      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
-
-      // Xóa file PNG tạm thời sau khi upload
-      await fs.unlink(convertedPath);
-      // Xóa file DICOM tạm thời
-      await fs.unlink(filePath);
-    } catch (error) {
-      console.error(`Lỗi khi xử lý file DICOM: ${JSON.stringify(error)}`);
-      return res.status(500).json({ error: "Lỗi khi xử lý file DICOM!" });
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
-  } else {
-    try {
-      console.log(
-        "File không phải là DICOM, upload trực tiếp lên Cloudinary..."
-      );
-      // Upload file PNG/JPEG trực tiếp lên Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(filePath, {
-        folder: "xray-images",
-        use_filename: true,
-        unique_filename: false,
-        resource_type: "image", // Đảm bảo Cloudinary xử lý file PNG/JPEG như ảnh
-      });
 
-      console.log(`Đã upload file lên Cloudinary: ${uploadResult.secure_url}`);
+    const file = req.file;
+    const isDicom = file.originalname.toLowerCase().endsWith('.dcm') ||
+      file.mimetype === 'application/dicom';
 
-      // Cập nhật thông tin file trong req.file
-      req.file.path = uploadResult.secure_url; // URL của file trên Cloudinary
-      req.file.cloudinaryUrl = uploadResult.secure_url; // Add cloudinaryUrl
-      req.file.cloudinaryId = uploadResult.public_id; // Thêm cloudinary_id
-
-      // Xóa file tạm thời sau khi upload
-      await fs.unlink(filePath);
-    } catch (error) {
-      console.error(`Lỗi khi upload file: ${JSON.stringify(error)}`);
-      return res.status(500).json({ error: "Lỗi khi upload file!" });
+    if (isDicom) {
+      console.log('📄 Processing DICOM file...');
     }
-  }
 
-  next();
+    // Upload to Cloudinary
+    console.log('☁️ Uploading to Cloudinary...');
+    const cloudinaryResult = await cloudinary.uploader.upload(file.path, {
+      folder: 'xray-diagnosis',
+      resource_type: 'image',
+      transformation: [
+        { width: 1000, height: 1000, crop: 'limit' },
+        { quality: 'auto' },
+        { format: 'jpg' }
+      ]
+    });
+
+    // Add Cloudinary info to req.file
+    req.file.cloudinaryId = cloudinaryResult.public_id;
+    req.file.cloudinaryUrl = cloudinaryResult.secure_url;
+
+    console.log(`✅ Uploaded to Cloudinary: ${cloudinaryResult.public_id}`);
+    next();
+
+  } catch (error) {
+    console.error('❌ DICOM/Cloudinary upload error:', error);
+    return res.status(500).json({
+      error: "File upload failed",
+      details: error.message
+    });
+  }
 };
 
 /**
@@ -90,29 +60,29 @@ export const handleDicomFile = async (req, res, next) => {
  * @param {object} res - Response object
  * @param {function} next - Next middleware function
  */
-export const validateOpenAIKey = (req, res, next) => {
-  // 🚀 UPDATED: 3-AI system requires OpenAI API key for ALL analyze endpoints
-  const isAnalyzeEndpoint = req.originalUrl.includes('/analyze');
-  const isGPT4oEndpoint = req.originalUrl.includes('gpt4o') || req.originalUrl.includes('second-opinion');
-
-  // Check if this endpoint requires OpenAI API key
-  if (isAnalyzeEndpoint || isGPT4oEndpoint) {
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(400).json({
-        error: "OPENAI_API_KEY không được cấu hình! Hệ thống 3-AI cần GPT-4o để hoạt động.",
-        suggestion: "Thêm OPENAI_API_KEY=your_api_key_here vào file .env",
-        endpoint_info: {
-          endpoint: req.originalUrl,
-          requires_openai: true,
-          reason: isAnalyzeEndpoint ? "3-AI Hybrid System" : "GPT-4o specific endpoint"
-        }
+export const validateOpenAIKey = async (req, res, next) => {
+  try {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      return res.status(500).json({
+        error: "OpenAI API key not configured for 3-AI system"
       });
     }
 
-    console.log(`✅ OpenAI API key validated for endpoint: ${req.originalUrl}`);
-  }
+    // Simple validation - check if key has proper format
+    if (!openaiKey.startsWith('sk-') || openaiKey.length < 40) {
+      return res.status(500).json({
+        error: "Invalid OpenAI API key format for 3-AI system"
+      });
+    }
 
-  next();
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      error: "OpenAI validation failed",
+      details: error.message
+    });
+  }
 };
 
 /**
@@ -121,29 +91,77 @@ export const validateOpenAIKey = (req, res, next) => {
  * @param {object} res - Response object
  * @param {function} next - Next middleware function
  */
-export const validateClinicalInfo = (req, res, next) => {
-  if (req.body.clinical_info) {
-    try {
-      const clinicalInfo = JSON.parse(req.body.clinical_info);
+export const validateClinicalInfo = async (req, res, next) => {
+  try {
+    if (req.body.clinical_info) {
+      let clinical_info;
 
-      // Validate structure
-      if (clinicalInfo.symptoms && !Array.isArray(clinicalInfo.symptoms)) {
+      try {
+        clinical_info = JSON.parse(req.body.clinical_info);
+      } catch (parseError) {
         return res.status(400).json({
-          error: "clinical_info.symptoms phải là một mảng (array) các chuỗi!"
+          error: "clinical_info must be valid JSON"
         });
       }
 
-      // Store parsed clinical_info back to req.body
-      req.body.parsed_clinical_info = clinicalInfo;
+      // Validate structure
+      const validFields = ['age', 'symptoms', 'initial_diagnosis', 'history'];
+      const invalidFields = Object.keys(clinical_info).filter(
+        field => !validFields.includes(field)
+      );
 
-      console.log(`✅ Clinical info validated:`, clinicalInfo);
-    } catch (err) {
-      return res.status(400).json({
-        error: "clinical_info phải là JSON hợp lệ!",
-        details: err.message
-      });
+      if (invalidFields.length > 0) {
+        return res.status(400).json({
+          error: `Invalid clinical info fields: ${invalidFields.join(', ')}. Valid fields: ${validFields.join(', ')}`
+        });
+      }
+
+      // Pre-parse for controller
+      req.body.parsed_clinical_info = clinical_info;
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      error: "Clinical info validation failed",
+      details: error.message
+    });
+  }
+};
+
+// Multer configuration for file upload
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+export const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept images and DICOM files
+    const allowedTypes = /jpeg|jpg|png|dcm|dicom/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'application/dicom';
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, and DICOM files are allowed!'));
     }
   }
+});
 
-  next();
+export default {
+  handleDicomFile,
+  validateOpenAIKey,
+  validateClinicalInfo,
+  upload
 }; 
